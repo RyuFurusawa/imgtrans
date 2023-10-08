@@ -1,13 +1,50 @@
 # imgtrans
 
+This is a programming tool for manipulating time and space of video data.
+It is a python library with the DrawManeuver class as the main part.  
+
 映像データの時間と空間を操作するためのプログラミングツールです。
-DrawManeuverクラスをメインとしたpythonライブラリです。  
+DrawManeuverクラスをメインとしたpythonライブラリです。 
 
+## Contents 目次
+- [Overview プロジェクトの概要](#overview-プロジェクトの概要)
+- [Background 背景](#background-背景)
+- [How to install インストール方法](#how-to-install-インストール方法)
+- [Usage Flow 使い方の流れ](#usage-flow-使い方の流れ)
+  - [1. Library Import ライブラリのインポート](#1-library-import-ライブラリのインポート)
+  - [2. Initialization of `drawManeuver` Class](#2-initialization-of-drawmaneuver-class)
+    - [Slit Direction スリットの方向](#slit-direction-スリットの方向)
+  - [3. Maneuver Design 軌道のデザイン](#3-maneuver-design-軌道のデザイン)
+    - [1. Main Functions for Spatiotemporal Integration 主な時空間統合的な動きを加える関数](#1-MainFunctionsforSpatiotemporalIntegration)
+    - [2. Main Functions to Adapt the Flow of Time 主な時間の流れを適応させる関数](#2-MainFunctionstoAdapttheFlowofTime)
+    - [Examples of Combinations 実際の組み合わせの例](#ExamplesofCombinations)
+    - [Save and Load of Track Data 軌道データの保存と読み込み](#SaveandLoadofTrackData)
+  - [4. Visualize ヴィジュアライズ](#4-Visualize)
+    - [Slit Color スリットの色](#SlitColor)
+    - [2D Plot 2dプロット](#2DPlot)
+    - [3D Plot 3dプロット](#3DPlot)
+  - [5. Rendering レンダリング](#5-Rendering)
+    - [Structure of `data` 軌道データの構造](#Structureofdata)
+    - [Video Rendering 映像のレンダリング](#VideoRendering)
+    - [Audio Rendering 音声のレンダリング](#AudioRendering)
+        - [Four Track Data CSVs 4つの軌道データのCSV](#FourTrackDataCSVs)
+        - [Four scd Files 4つのscdファイル](#FourscdFiles)
+        - [Execution of scd File scdファイルの実行](#ExecutionofscdFile)
+    - [Combining Audio and Video 音声と映像の結合](#CombiningAudioandVideo)
+- [drawManeuver Class](#drawManeuverClass)
+  - [Class Variables クラス変数](#ClassVariables)
+  - [Instance Variables インスタンス変数](#InstanceVariables)
+  - [List of All Class Methods 全クラスメソッドのリスト](#ListofAllClassMethods)
+- [addCycleTrans](#addCycleTransMethod)
+- [addcustomCycleTrans](#addcustomcycletransmethod)
+- [transprocess](#transprocessmethod)
+- [animationout](#animationoutmethod)
+- [Contribute コントリビュート](#contribute)
+- [License ライセンス](#license)
+
+<!-- 
 ## 目次
-
 - [プロジェクトの概要](#プロジェクトの概要)
-    <!-- - [1. 軌道のデザイン](#1-軌道のデザイン)  
-    - [2. 映像のレンダリング](#2-映像のレンダリング) -->
 - [背景](#背景)
 - [インストール方法](#インストール方法)
 - [使い方の流れ](#使い方の流れ)
@@ -41,9 +78,12 @@ DrawManeuverクラスをメインとしたpythonライブラリです。
 - [transprocessメソッド](#transprocessメソッド)
 - [animationoutメソッド](#animationoutメソッド)
 - [コントリビュート](#コントリビュート)
-- [ライセンス](#ライセンス)
+- [ライセンス](#ライセンス) -->
 
-## プロジェクトの概要
+## Overview プロジェクトの概要
+By interpreting the time dimension of the video as a three-dimensional depth axis, the video data becomes a cube composed of voxels. Here, this three-dimensional video data is called a spatio-temporal object. The spatio-temporal object has plasticity in that it stores color information determined for all of space and can be retrieved as an image with an array of colors even when cut at various angles and directions. By manipulating the cross-sectional behavior of this spatio-temporal object, a new time- and space-ordered image is created that is different from the time and space of the input image.  
+In other words, this tool makes it possible to intervene in the temporal and spatial dimensions of the input image, and the anamorphic relationship between the output image and the input image provides a new perspective on movement and encourages exploration into the perception of time and space installed in the human body senses.  
+
 映像の時間次元を三次元の奥行き軸として解釈することで、映像データはボクセルで構成されるキューブとなります。ここではこの三次元の映像データを時空間オブジェクトと呼ぶこととします。時空間オブジェクトには、空間全てに決定された色情報が蓄積されており、さまざまな角度、方向でカットしても色の配列を持つイメージとして取り出すことができる可塑性があります。この時空間オブジェクトの断面の振る舞いを操作することで、入力映像の時間と空間とは異なる、新たな時間と空間に秩序だてられた映像が作り出されます。  
 つまりこのツールにより、入力された映像の時間次元、空間次元へ介入することを可能とし、出力された映像と入力映像とのアナモルフィックな関係性から、動きについての新しい視点をもたらし、人間の身体感覚にインストールされた時空間の知覚への探究を促すものです。
 
@@ -61,7 +101,9 @@ DrawManeuverクラスをメインとしたpythonライブラリです。
 PCメモリのRAM容量に応じて、連番イメージの一時ファイルをROMに保存し、最後に統合して映像データとして書き出されます。 
 -->
 
-## 背景
+## Background 背景
+Development of this tool began in 2020 for filmmaker Ryu Furusawa, for whom several works have been produced.  
+
 本ツールは2020年より映像作家の古澤龍の作品制作のために開発が始められ、いくつかの作品が制作されました。
 <ul><li><a href="https://ryufurusawa.com/post/711685011289554944/mid-tide-ryu-furusawa-multi-channel-video">Mid Tide,2023 </a></li>
 <li><a href="https://ryufurusawa.com/post/661228499174113280/wavesetude">Waves Etude,2020-2022</a></li>
@@ -75,8 +117,11 @@ PCメモリのRAM容量に応じて、連番イメージの一時ファイルを
 <p><a href="https://ryufurusawa.com/post/711685011289554944/mid-tide-ryu-furusawa-multi-channel-video">Mid Tide </a> Ryu Furusawa,2023</p>
 </div> -->
 
-## インストール方法
+## How to Install インストール方法
+Before installing this library, please install the following external libraries
+
 このライブラリをインストールする前に、以下の外部ライブラリをインストールしてください
+
 ```bash
 pip install opencv-python numpy psutil easing-functions matplotlib librosa
 ```
@@ -85,14 +130,14 @@ pip install opencv-python numpy psutil easing-functions matplotlib librosa
 pip install git+https://github.com/ryufurusawa/imgtrans.git
 ```
 
-## 使い方の流れ
-### 1. ライブラリのインポート
+## Usage Flow　使い方の流れ
+### 1. library import ライブラリのインポート
+First, import the module.   
 まず、モジュールをインポートします。
 ```python
 import imgtrans
 ```
-
-### 2. drawManeuverクラスの初期化
+### 2. Initialization of drawManeuver class
 入力のビデオパスと、計算の基準となるスリットの方向を指定してdrawManeuverクラスのインスタンスを作成します。
 ```python
 #入力映像のパス
@@ -102,14 +147,14 @@ videopath= '/Users/Movies/20230917_RFS3108_mod-HD720p.mov'
 #２つ目の変数はスリットが縦か横かを指定する。0=横スリット、1=縦スリットを示す。
 your_maneuver=imgtrans.drawManeuver(videopath,1)
 ```
-#### スリットの方向  
+#### Slit Direction　スリットの方向 
 本ツールでは、スリットの方向を縦スリットと横スリットに限定し、最初に指定します。  
 スリットの方向の違いによって、今後の軌道の操作による結果は大きく変わります。
 ![slit-direction illustration](images/slit-direction.png)
 ![Alt text](images/slit-direction-transpostion-3dplotanimation.gif)
 ![Alt text](images/slit-direction-transpostion-rendering.gif)
 
-### 3. 軌道のデザイン
+### 3. Maneuver Design 軌道のデザイン
 いくつかのクラスメソッドを組み合わせて再生断面の軌道をデザインします。  
 クラスメソッドは**1. 時空間統合的な動きを加える関数**と**2. 時間の流れを適応させる関数**の二つに大きく分けられます。  
 これらを実行することで、インスタンス変数の`data`に軌道データが格納されます。 
@@ -117,7 +162,7 @@ your_maneuver=imgtrans.drawManeuver(videopath,1)
 ここで編集される軌道データの内実は、出力映像が入力映像のどこのスリット（空間位置、時間位置）と対応しているか、座標変換として記述されています。  
 詳しくは、[`data`の構造](#dataの構造)をご確認ください。
 
-#### 1. 主な時空間統合的な動きを加える関数
+#### 1. Main Functions for Spatiotemporal Integration 主な時空間統合的な動きを加える関数
 - [`addTrans`](#addtransselfframe_numsend_line1start_line0speed_roundtrue): 空間次元と時間次元のシンプルな置き換え。
 - [`addBlowupTrans`](#addblowuptransselfframe_numsdegspeed_roundtrueconnect_round1): addTransを継承しつつ時間次元のスケールの拡大縮小の操作
 - [`addInterpolation`](#addinterpolationselfframe_numsinterporation_directionz_directionaxis_positionreversal0cycle_degree90extra_degree0zslide0speed_roundtruerrange01): 時空間次元の遷移
@@ -127,7 +172,7 @@ your_maneuver=imgtrans.drawManeuver(videopath,1)
 
 ![Alt text](images/Maneuver-examples-3dplot.gif)
 
-#### 2. 主な時間の流れを適応させる関数
+#### 2. Main Functions to Adapt the Flow of Time 主な時間の流れを適応させる関数
 - [`applyTimeForward`](#applytimeforwardselfslide_timenone): 配列全体に時間の順方向の流れを付与
 - [`applyTimeOblique`](#applytimeobliqueselfmaxgap): 時間のずれをスリットのごとに一定数づつ時間をずらす
 - [`applyTimeForwordAutoSlow`](#applytimeforwordautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): 再生レート１からスロー再生になり最後に再生レート１に戻る
@@ -137,7 +182,7 @@ your_maneuver=imgtrans.drawManeuver(videopath,1)
 
 ![Alt text](images/timeManeuver-examples-3dplot.gif)
 
-#### 実際の組み合わせの例
+#### Examples of Combinations 実際の組み合わせの例
 ```python
 # 軌道デザイン
 bm.rootingA_interporation(270)
@@ -145,15 +190,15 @@ bm.applyTimeLoop(1)
 ```
 ![Alt text](images/mixManeuver-examples-3dplot_harf.gif)
 
-#### 軌道データの保存と読み込み
+####  Saving and loading maneuver data 軌道データの保存と読み込み
 別のソフトウェアで編集したり、レンダリング自体は後に行う場合や、同じ軌道データを用いて複数の映像データをレンダリングする場合などに、軌道データのみを保存、読み込みする場合があります。
 
-##### 軌道データの保存
+##### Maneuver data storage 軌道データの保存
 書き出し用ディレクトリ内に保存されます。
 ```python
 your_maneuver.data_save()
 ```
-##### 軌道データの読み込み
+##### Loading maneuver data 軌道データの読み込み
 初期化する場合。
 ```python
 import numpy as np
@@ -170,19 +215,19 @@ your_maneuver.data=np.read("path/to/data.npy" )
 であるのに、参照する縦スリットの横位置が2000であった場合、エラーとなります。
 
 
-### 4. ヴィジュアライズ
+### 4. Visualization ヴィジュアライズ
 この機能は、インスタンス変数の`data`を視覚的に表現し、理解しやすくするためのものです。  
 2Dプロットと3Dプロットの２つの方法でデータを可視化できます。  
 3Dグラフでは、軌道の全体的な動きを直感的に把握することができます。一方、時間の流れの詳細は2Dグラフを見ることでより明確に理解することができます。  
 この2つの方法を組み合わせることで、たとえば画面の左側では時間が逆行し、右側では時間が順行するといった、時間の動きの細かな設計も行うことができます。  
 ヴィジュアライズのイメージデータは、入力映像と同じパスに生成された書き出し用ディレクトリ内に保存されます。
 
-#### スリットの色
+#### color of slits スリットの色
 映像の空間方向が反転する振る舞いも設計可能です。そのような空間次元の方向を明示する意味で、ヴィジュアライズのスリットの描画は緑-赤のグラデーションにより区別されています。  
 1. 縦スリットの場合は、緑が左端、赤が右端の出力位置に対応します。
 1. 横スリットの場合は、緑が上端、赤が下端の出力位置に対応します。
 
-#### 2dプロット
+#### 2d plot
 2次元の軌道グラフは、軌道デザインに関する操作が行われるたびに逐次書き出されます。  
 このグラフは、出力映像の時間を横軸として、以下の3つの要素を一つの図として表示します。
 1. 空間方向動き
@@ -224,30 +269,30 @@ your_maneuver.maneuver_2dplot()
 ```python
 your_maneuver.auto_visualize_out = False
 ```
-#### 3Dプロット
+#### 3D plot
 三次元グラフへの軌道プロットアニメーションを出力する場合は、明示的に書く必要があります。
 ```python
 your_maneuver.maneuver_3dplot()
 ```
 
 ![visualized 3dplot gifimage](images/GX010148_2023_0617_Vslit_Flat100+Interpolation300(ID1-ZD0-AP0-REV0)+Freeze30+Transposition300+CycleTrans_addExtend_TimeForward1_TimeBlur30_TimeBlur100_SpaceBlur100_3dPlot.gif)
-### 5. レンダリング
+
+### 5. Rendering レンダリング
 入力の映像データを、インスタンス変数に`data`をもとに、時空間を組み直し、映像のレンダリングを行います。
 
-#### `data`の構造
+#### Structure of `data`　データの構造
 インスタンス変数`data`には軌道データが格納されています。その`data`の構造について解説します。  
 本モジュールでは、スリットの方向を最初に横か、縦かを定義し、映像データへのアクセスをピクセル単位ではなくスリット単位としています。  
 こうすることで、各映像データの最小単位であるスリットへのアクセスは二次元の座標（一次元位置（縦スリットであれば横）、時間）を指定することでアクセス可能となります。
 `data`に保存される軌道データとは出力映像を構成する各スリットが入力映像を構成するスリットのどの座標（一次元位置、時間位置）から持ってこられたものかを示す、座標変換のマップです。
 そのため、各ピクセルの色彩のデータは保存されていません。あくまで座標変換の対応が記述されているだけです。
 データは、出力映像のフレーム数と、出力映像を構成するスリット数、この2次元の各データに2つのチャンネルを持たせた三次元のNUMPY配列として保存されています。
-<!-- 1. 出力する映像のスリット位置
-2. 参照される入力映像のスリット位置
-3. 入力映像の時間位置 -->
+
 1. 参照される入力映像のスリット位置
 2. 入力映像の時間位置
 
 以下のコードは、`data`を調べるいくつかのサンプルです。
+
 ```python
 print("出力する映像のフレーム数",your_maneuver.data.shape[0])
 print("スキャンする数、縦スリットの場合、出力する映像の横幅のピクセル数",your_maneuver.data.shape[1])
@@ -259,7 +304,7 @@ plt.plot(your_maneuver.data[:,0,0])
 #一つ目のスリットの入力の時間位置の推移を描画する。
 plt.plot(your_maneuver.data[:,0,2])
 ```
-#### 映像のレンダリング
+#### Video Rendering 映像のレンダリング　
 レンダリング映像データは、入力映像と同じパスに生成された書き出し用のディレクトリ内に保存されます。
 ```python
 your_maneuver.transprocess()
@@ -282,7 +327,7 @@ your_maneuver.transprocess(out_type=0) #0=still, 1=video, 2=both
 ```
 詳細は [`transprocess`](#transprocessメソッド)こちらを参照ください。
 
-#### 音声のレンダリング
+#### Audio Rendering 音声のレンダリング
 音声処理自体は、SuperColliderで行います。  
 まず、SuperColliderで読み込ませるコードをクラスメソッドの`scd_out`から出力します。  
 `scd_out`では、インスタンス変数の`data`で記述されたスリットの動きのデータから、音声出力するために、スリットの本数を間引いた上で出力します。   
@@ -297,13 +342,13 @@ bm.scd_out(7)
 ```
 上記を実行すると、４つのCSVdataと、４種のSuperColliderのプログラム.scdファイルが出力されます。
 
-##### 4つの軌道データのCSV
+##### 4 types of CSV 4つの軌道データのCSV
 1. *_7threads.csv : スリットの時間位置。
 1. *_Rate_7threads.csv : スリットの再生レート
 1. *_inPanMap_7threads.csv : スリットの空間位置
 1. *_nowDepth_7threads.csv : 一枚のフレーム内における時間のずれ幅
 
-##### 4つのscdファイル
+##### 4 types of SCD 4つのscdファイル
 1. *_SC_Play-7voices.scd : マルチ再生、再生レートに準じてピッチが変化する
 1. *_SC_Grain-7voices.scd : グラニュラーシンセシスを用いたマルチ再生。再生レートに関係なくピッチは変化しない。
 1. *_SC_Rev_Play-7voices.scd : マルチ再生。時間のずれ幅に応じてリバーブの適応。
@@ -311,7 +356,7 @@ bm.scd_out(7)
 
 サンプルの映像ファイルを確認して、その効果と特徴を参考にしてください。
 
-##### scdファイルの実行
+##### Running scd files scdファイルの実行
 scdファイルのうち、いずれかをSuperColliderに読み込ませます。　　
 いずれも、リアルタイムに音響処理を実行し、それを仮想サーバーにてレコーディングし音声ファイルとして保存させます。
 保存される音声ファイルは映像レンダリングデータと同じディレクトリに保存されます。  
@@ -320,7 +365,7 @@ scdファイルのうち、いずれかをSuperColliderに読み込ませます�
 
 ![Alt text](images/scd_sample.png)
  
-###### 1. AudioのSettingとデータの読み込み
+###### 1. Audio Setting and Data Loading AudioのSettingとデータの読み込み
 AudioのSetting、`SynthDef`によるシンセの定義、音声データの読み込み、CSVdataの読み込みを行います。  
 オーディオのアウトプットデバイスの設定は各自の環境に合せ書き換えてください。  
 デフォルトでは以下のようになっています。
@@ -332,7 +377,7 @@ Server.default.options.outDevice_("MacBook Proのス");
 ```supercollier
 ServerOptions.devices; 
 ```
-###### 2. `Synth`の再生とRecording
+###### 2. Playback and Recording of `Synth` 再生とレコーディング
 定義した `Synth`の再生をループ処理によりリアルタイムに再生を行い、Recordingを行います。  
 Recordingと同時にUnix commandによりレンダリング映像ファイルをQuickTimePlayerにて再生させます。
 やや時間のギャップは入りますが、映像と音声を擬似的に同期した状態で再生できます。
@@ -340,15 +385,15 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 ```unixcmd
 "open -a 'QuickTime Player' '/Users/Movies/sample-raw-mov/sample_Vslit.mp4' ".unixCmd;
 ```
-#### 音声と映像の結合
+#### Audio and video coupling 音声と映像の結合
 特にプログラムを用意していません。
 映像編集ソフトにて、ビデオと音声を時間同期させた上で、再書き出しを行ってください。
 
-## drawManeuver クラス
+## drawManeuver class
 
 このクラスはImgtransライブラリのメインとなるものです。
 
-### クラス変数:
+### Class Variables クラス変数:
 - `imgtype`: レンダリングにおける静止画像のフォーマット（デフォルトは ".jpg"）
 - `img_size_type`: 出力イメージのサイズの設定。入力の映像の高さをh,幅をwとすると、`0`:h,w `1`:w,w*2 `2`:総フレーム数分 `3`: square （デフォルトは `0`）
 - `outfps`: 出力のフレームレート（デフォルトは 30）
@@ -359,7 +404,7 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 <!-- - `progressbarsize`: プログレスバーサイズ（デフォルトは 50） -->
 <!-- - `sepVideoOut`: セパレート出力設定 -->
 
-### 全クラスメソッドのリスト:
+### List of all class methods 全クラスメソッドのリスト:
 - [`__init__`](#__init__メソッド): ビデオパスを受け取り初期化する。
 - [`append`](#appendメソッド): 別で作成していた軌道データをインスタンス変数としてもつ軌道データの後ろに追加する。
 - [`prepend`](#prependメソッド): 別で作成していた軌道データを、インスタンス変数としてもつ軌道データの先頭にmaneuverを追加する。
@@ -417,10 +462,10 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
     - [`transprocess_typeB`](#transprocess_typeBメソッド): 映像のレンダリングを行うメソッド。セパレートプロセスをアウトプットの時間次元ではなく、インプットの時間次元を分割させて処理します。時間軸方向に極端に幅を広くとるようなマニューバーが組み込まれている場合はこのメソッドを使うことで、レンダリング速度が上がります。
     - [`animationout`](#animationoutメソッド): 出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力する。そのため、映像のレンダリングを行った後にしか実行できません。
 
-## `__init__`メソッド
+## `__init__`
 `__init__`メソッドは、ビデオのパス、スキャン方向、データ、およびフォルダ名の属性を引数として受け取る。このメソッドは、下記のインスタンス変数を初期化し、ビデオパスと同じレベルに出力用のディレクトリを作成し、そのディレクトリに移動する。最終的に出力されるあらゆるファイルはこのディレクトリ内に保存されます。
 
-### 引数
+### argument 引数
 - `videopath` (str): ビデオファイルへのパス。
 - `sd` (bool): スリットの方向。`True`で縦スリット`False`で横スリット
 - `datapath` (str, optional): 以前に保存していた軌道データを引き継ぐ場合に使用するオプション。Numpyの多次元配列として保存されたnpyデータのパス。
@@ -469,14 +514,14 @@ print(your_maneuver.data.shape)
 
 `addTrans`メソッドは、`wr_array`に新しいトランス軌跡を追加して返すための関数です。このメソッドは、特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
 
-### 引数
+### argument 引数
 - `frame_nums`(int): 追加するフレーム数。
 - `end_line`(float, optional, default: `1`): 変換の終了ライン。
 - `start_line`(float, optional, default: `0`): 変換の開始ライン。
 - `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
 - `zd`(bool, optional, default: `True`): 方向設定。
 
-### 使用例
+### Examples of Use 使用例
 ```python
 your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ```
@@ -488,11 +533,11 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ### addWideKeyframeTrans(self,frame_nums,key_array,wide_scale=3,start_frame=[0,0],speed_round=False)
 ### addBlowupTrans(self,frame_nums,deg,speed_round=True,connect_round=1)
 -->
-## `addInterpolation`メソッド
+## `addInterpolation`
 
 `interpolation` メソッドは、指定された軌道データをもとにインターポレーションを行い、新たなフレームを生成するためのメソッドです。この関数は、特定のフレーム数にわたり、複雑な変換を加えるためのものです。
 
-### 引数
+### argument 引数
 - `frame_nums`(int): インターポレーションを行うフレーム数。
 - `interporation_direction`(int): インターポレーションの方向。
 - `z_direction`(int): Z方向におけるインターポレーションの方向。
@@ -504,7 +549,7 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 - `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
 - `rrange`(list of int, optional, default: `[0,1]`): 変換の範囲を指定するリスト。
 
-### 使用例
+### Examples of Use 使用例
 ```python
 your_object.addInterpolation(100, 0, 0, 0,reversal=False)
 ```
@@ -520,11 +565,11 @@ your_object.addInterpolation(100, 0, 1, 1,reversal=True)
 ### rootingB_interporation(self,FRAME_NUMS,loop_num=1,axis_fix_p=0)
 -->
 
-## `addCycleTrans`メソッド
+## `addCycleTrans`
 
 `addCycleTrans` メソッドは、サイクル的な変換（トランス）をデータに追加するためのものです。特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
 
-### 引数
+### argument 引数
 - `frame_nums`(int): 追加するフレーム数。
 - `cycle_degree`(int, optional, default: `360`): 1サイクルあたりの角度。
 - `zscaling`(bool, optional, default: `False`): Z軸のスケーリングを有効にするかどうか。
@@ -532,18 +577,18 @@ your_object.addInterpolation(100, 0, 1, 1,reversal=True)
 - `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
 - `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
 
-### 使用例
+### Examples of Use 使用例
 ```python            
 your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra_degree=5, speed_round=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
 
-## `addCustomCycleTrans`メソッド
+## `addCustomCycleTrans`
 
 `addCustomCycleTrans` このクラス関数は、`addCycleTrans`での中心軸を自由に動かすことができます。
 `start_center`引数で指定した位置から`end_center`で指定した位置までリニアに変化させます。
 
-### 引数
+### argument 引数
 - `frame_nums`(int): 追加するフレーム数。
 - `cycle_degree`(int): 1サイクルあたりの角度。
 - `start_center`(float, optional, default: `1/2`): 開始の中心軸の位置。(0~1)の範囲でスキャン方向の長さに対しての比率として指定する。縦スリットの場合、0は左端、1は右端になる。
@@ -555,7 +600,7 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 - `auto_zslide`(bool, optional, default: `True`): Zスライドの自動調整の有効・無効を切り替えるフラグ。
 - `zscaling_v`(float, optional, default: `0.9`): Zスケーリングの係数。
 
-### 使用例
+### Examples of Use 使用例
 ```python
 your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_center=0.7)
 ```
@@ -591,7 +636,7 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 ## `transprocess`メソッド
 このメソッドは映像のレンダリングを行います。
 
-### 引数
+### argument 引数
 - `separate_num` (int, optional, default: `1`): レンダリングを何分割で行うかの指定。
 - `sep_start_num` (int, optional, default: `0`): 分割レンダリング時に、どの分割から開始するかの指定。
 - `sep_end_num` (int or None, optional, default: `None`): 分割レンダリング時に、どの分割まで行うかの指定。
@@ -599,7 +644,7 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 - `XY_TransOut` (bool, optional, default: `False`): Trueの場合、出力映像を90度回転して保存。
 - `render_mode` (int, doptional, default: `0`): レンダリングモード。`0`は全軌道データのフレームを統合して出力。`1`は`sep_start_num` から `sep_end_num` までの範囲だけを出力。
 
-### 使用例
+### Examples of Use 使用例
 ```python
 # インスタンスを作成
 your_maneuver = imgtrans.drawManeuver("mov/samplevideo.mp4",sd=1)
@@ -613,7 +658,11 @@ your_maneuver.transprocess()
 ```
 
 <!-- ## transprocess_typeB(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0) -->
-## `animationout`メソッド
+## `animationout`
+
+The `animationout` function plots the pixel color of the image on a 3D graph with reference to the output video data and outputs the result as an animation. It allows you to visualize the trajectory of the playback cross section based on spatio-temporal manipulations on the spatio-temporal cube. Unlike 'maveuver_2dplot' and 'maveuver_3dplot', this visualization is more intuitive in its correspondence with the input video data by mapping pixel colors.  
+ Therefore, it can only be executed after rendering the video. If there is already video data to be exported, it is necessary to call the information in the instance variable 'out_videopath'.
+ 
  `animationout`関数は、出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力します。時空間キューブ上での時空間操作に基づく再生断面の軌道を可視化させます。 'maveuver_2dplot','maveuver_3dplot'とは違いピクセルの色をマッピングすることでより入力の映像データとの対応を直感的に理解しやすいビジュアライズです。  
  そのため、映像のレンダリングを行った後にしか実行できません。もし、既に書き出しの映像データが存在する場合は、インスタンス変数'out_videopath'にて情報を呼び出す必要があります。
  
@@ -622,23 +671,21 @@ your_maneuver.transprocess()
  your_maneucer.animationout()
  ```
 
- ## 引数
+ ### argument 引数
 - `outFrame_nums` (`int`, default: `100`): 出力するフレーム数。
 - `drawLineNum` (`int`, default: `250`): 描画するラインの数。
 - `dpi` (`int`, default: `200`): 出力画像のDPI。
 - `out_fps` (`int`, default: `10`): 出力動画のフレームレート。
 
-## 使用例
+### Examples of Use 使用例
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)
 
+## Contribute
+Contributions to this project are welcome.  
+If you have any questions or feedback, please feel free to contact us at ryu.furusawa(a)gmail.com.  
 
-
-
-## コントリビュート
 このプロジェクトへのコントリビュートを歓迎します。  
 質問やフィードバックがあれば、ryu.furusawa(a)gmail.comまでお気軽にお問い合わせください。
 
-## ライセンス
+## License 
 This project is licensed under the MIT License, see the LICENSE.txt file for details
-
-
