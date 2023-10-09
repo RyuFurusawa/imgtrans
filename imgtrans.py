@@ -2433,7 +2433,7 @@ class drawManeuver:
         timevalues:読み込む時間軸方向のピクセル数    
         timepoints=書き出す総フレームに対する時間軸のキーフレーム        
     '''
-    def addBlowupTrans(self,frame_nums,deg,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[]):
+    def addBlowupTrans(self,frame_nums,deg,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[],zeffect=0):
         #2021.09.02　New。
         #2022.09.19 プロセスをcycletransと同等に
         """
@@ -2487,7 +2487,8 @@ class drawManeuver:
                 for x in range(0,int(self.width)):#Xは固定でzポイントが飛び飛びから詰まっていく。
                     zp=round(front_point+x*ajstlen)
                     # write_array.append([xp,zp,ajstlen>0])
-                    write_array.append([xp,zp])
+                    zadd = (xp  /  self.width)* (self.width*zeffect)
+                    write_array.append([xp,zp+zadd])
                     # print(i,t,ajstlen,t*ajstlen,zp,i*(scale_gap/frame_nums))
             else:
                 yp = int((self.height-1)-(zcos*(self.height-1)/2+(self.height-1)/2))
@@ -2501,7 +2502,7 @@ class drawManeuver:
             # if i>frame_nums-100 :breakpoint()
         if len(self.data) != 0: self.data = np.vstack((self.data,np.array(wr_array)))
         else: self.data=np.array(wr_array)
-        self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(frame_nums))
+        self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(frame_nums)+"-deg"+str(deg))
 
 # パス内の映像ファイルを抽出して配列を返す
 def addmovfile(prepath):

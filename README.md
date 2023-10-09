@@ -1,555 +1,473 @@
 # imgtrans
 
-This is a programming tool for manipulating time and space of video data.
-It is a python library with the DrawManeuver class as the main part.  
+A programming tool for manipulating time and space in video data. It's primarily a Python library centered around the `DrawManeuver` class.
 
-映像データの時間と空間を操作するためのプログラミングツールです。
-DrawManeuverクラスをメインとしたpythonライブラリです。 
+## Table of Contents
 
-## Contents 目次
-- [Overview プロジェクトの概要](#overview-プロジェクトの概要)
-- [Background 背景](#background-背景)
-- [How to install インストール方法](#how-to-install-インストール方法)
-- [Usage Flow 使い方の流れ](#usage-flow-使い方の流れ)
-  - [1. Library Import ライブラリのインポート](#1-library-import-ライブラリのインポート)
-  - [2. Initialization of `drawManeuver` Class](#2-initialization-of-drawmaneuver-class)
-    - [Slit Direction スリットの方向](#slit-direction-スリットの方向)
-  - [3. Maneuver Design 軌道のデザイン](#3-maneuver-design-軌道のデザイン)
-    - [1. Main Functions for Spatiotemporal Integration 主な時空間統合的な動きを加える関数](#1-MainFunctionsforSpatiotemporalIntegration)
-    - [2. Main Functions to Adapt the Flow of Time 主な時間の流れを適応させる関数](#2-MainFunctionstoAdapttheFlowofTime)
-    - [Examples of Combinations 実際の組み合わせの例](#ExamplesofCombinations)
-    - [Save and Load of Track Data 軌道データの保存と読み込み](#SaveandLoadofTrackData)
-  - [4. Visualize ヴィジュアライズ](#4-Visualize)
-    - [Slit Color スリットの色](#SlitColor)
-    - [2D Plot 2dプロット](#2DPlot)
-    - [3D Plot 3dプロット](#3DPlot)
-  - [5. Rendering レンダリング](#5-Rendering)
-    - [Structure of `data` 軌道データの構造](#Structureofdata)
-    - [Video Rendering 映像のレンダリング](#VideoRendering)
-    - [Audio Rendering 音声のレンダリング](#AudioRendering)
-        - [Four Track Data CSVs 4つの軌道データのCSV](#FourTrackDataCSVs)
-        - [Four scd Files 4つのscdファイル](#FourscdFiles)
-        - [Execution of scd File scdファイルの実行](#ExecutionofscdFile)
-    - [Combining Audio and Video 音声と映像の結合](#CombiningAudioandVideo)
-- [drawManeuver Class](#drawManeuverClass)
-  - [Class Variables クラス変数](#ClassVariables)
-  - [Instance Variables インスタンス変数](#InstanceVariables)
-  - [List of All Class Methods 全クラスメソッドのリスト](#ListofAllClassMethods)
-- [addCycleTrans](#addCycleTransMethod)
-- [addcustomCycleTrans](#addcustomcycletransmethod)
-- [transprocess](#transprocessmethod)
-- [animationout](#animationoutmethod)
-- [Contribute コントリビュート](#contribute)
-- [License ライセンス](#license)
+- [Project Overview](#project-overview)
+- [Background](#background)
+- [Installation](#installation)
+- [Usage Flow](#usage-flow)
+  - [1. Library Import](#1-library-import)
+  - [2. Initialization of drawManeuver Class](#2-initialization-of-drawmaneuver-class)
+    - [Direction of the Slit](#direction-of-the-slit)
+  - [3. Maneuver Design](#3-maneuver-design)
+    - [1. Main Methods to Add Spatiotemporal Movement](#1-main-methods-to-add-spatiotemporal-movement)
+    - [2. Main Methods to Adapt Flow of Time](#2-main-methods-adapting-the-flow-of-time)
+    - [Examples of Combinations](#examples-of-combinations)
+    - [Saving and Loading Maneuver Data](#saving-and-loading-maneuver-data)
+  - [4. Visualization](#4-visualization)
+    - [Slit color](#slit-color)
+    - [2D Plot](#2d-plot)
+    - [3D Plot](#3d-plot)
+  - [5. Rendering](#5-rendering)
+    - [Structure of `data`](#structure-of-data)
+    - [Video Rendering](#video-rendering)
+    - [Audio Rendering](#audio-rendering)
+        - [4 CSV of Maneuver Data](#4-csv-data-of-maneuver)
+        - [4 SCD Files](#4-scd-files)
+        - [Running the scd File](#running-the-scd-file)
+          - [1. Audio Settings and Data Loading](#1-audio-settings-and-data-loading)
+          - [2. Playing `Synth` and Recording](#2-playing-synth-and-recording)
 
-<!-- 
-## 目次
-- [プロジェクトの概要](#プロジェクトの概要)
-- [背景](#背景)
-- [インストール方法](#インストール方法)
-- [使い方の流れ](#使い方の流れ)
-  - [1. ライブラリのインポート](#1-ライブラリのインポート)
-  - [2. drawManeuverクラスの初期化](#2-drawmaneuverクラスの初期化)
-    - [スリットの方向](#スリットの方向)
-  - [3. 軌道のデザイン](#3-軌道のデザイン)
-    -　[1. 主な時空間統合的な動きを加える関数](#1-主な時空間統合的な動きを加える関数)
-    -　[2. 主な時間の流れを適応させる関数](#2-主な時間の流れを適応させる関数)
-    - [実際の組み合わせの例](#実際の組み合わせの例)
-    - [実際の組み合わせの例](#実際の組み合わせの例)
-    - [軌道データの保存と読み込み](#軌道データの保存と読み込み)
-  - [4. ヴィジュアライズ](#4-ヴィジュアライズ)
-    - [スリットの色](#スリットの色)
-    - [2dプロット](#2dプロット)
-    - [3dプロット](#3dプロット)
-  - [5. レンダリング](#5-レンダリング)
-    - [`data`の構造](#dataの構造)
-    - [映像のレンダリング](#映像のレンダリング)
-    - [音声のレンダリング](#音声のレンダリング)
-        - [4つの軌道データのCSV](#4つの軌道データのCSV)
-        - [4つのscdファイル](#4つのscdファイル)
-        - [scdファイルの実行](#scdファイルの実行)
-    - [音声と映像の結合](#音声と映像の結合)
-- [drawManeuver クラス](#drawmaneuver-クラス)
-  - [クラス変数](#クラス変数)
-  - [インスタンス変数](#インスタンス変数)
-  - [全クラスメソッドのリスト](#全クラスメソッドのリスト)
-- [addCycleTransメソッド](#addcycletransメソッド)
-- [addcustomCycleTransメソッド](#addcustomcycletransメソッド)
-- [transprocessメソッド](#transprocessメソッド)
-- [animationoutメソッド](#animationoutメソッド)
-- [コントリビュート](#コントリビュート)
-- [ライセンス](#ライセンス) -->
+    - [Combining Audio and Video](#combining-audio-and-video)
+- [drawManeuver Class](#drawmaneuver-class)
+  - [Class Variables](#class-variables)
+  - [Instance Variables](#instance-variables)
+  - [List of All Class Methods](#list-of-all-class-methods)
+- [__init__](#__init__)
+- [addTrans](#addtrans)
+- [addInterpolation](#addinterpolation)
+- [addCycleTrans](#addcycletrans)
+- [addcustomCycleTrans](#addcustomcycletrans)
+- [transprocess](#transprocess)
+- [animationout](#animationout)
+- [Contribute](#contribute)
+- [License](#license)
 
-## Overview プロジェクトの概要
-By interpreting the time dimension of the video as a three-dimensional depth axis, the video data becomes a cube composed of voxels. Here, this three-dimensional video data is called a spatio-temporal object. The spatio-temporal object has plasticity in that it stores color information determined for all of space and can be retrieved as an image with an array of colors even when cut at various angles and directions. By manipulating the cross-sectional behavior of this spatio-temporal object, a new time- and space-ordered image is created that is different from the time and space of the input image.  
-In other words, this tool makes it possible to intervene in the temporal and spatial dimensions of the input image, and the anamorphic relationship between the output image and the input image provides a new perspective on movement and encourages exploration into the perception of time and space installed in the human body senses.  
-
-映像の時間次元を三次元の奥行き軸として解釈することで、映像データはボクセルで構成されるキューブとなります。ここではこの三次元の映像データを時空間オブジェクトと呼ぶこととします。時空間オブジェクトには、空間全てに決定された色情報が蓄積されており、さまざまな角度、方向でカットしても色の配列を持つイメージとして取り出すことができる可塑性があります。この時空間オブジェクトの断面の振る舞いを操作することで、入力映像の時間と空間とは異なる、新たな時間と空間に秩序だてられた映像が作り出されます。  
-つまりこのツールにより、入力された映像の時間次元、空間次元へ介入することを可能とし、出力された映像と入力映像とのアナモルフィックな関係性から、動きについての新しい視点をもたらし、人間の身体感覚にインストールされた時空間の知覚への探究を促すものです。
+## Project Overview
+By interpreting the time dimension of a video as the depth axis of three dimensions, video data becomes a cube composed of voxels. Here, we'll call this three-dimensional video data a "spatiotemporal object". This spatiotemporal object has color information determined for all spaces, and has plasticity where it can be extracted as an image with color arrangements even when cut from various angles and directions. By controlling the behavior of the cross-section of this spatiotemporal object, a video, organized in a new time and space different from the time and space of the input video, is produced. 
+In other words, this tool allows intervention in the time and spatial dimensions of the entered video, bringing a new perspective on movement from the anamorphic relationship between the output and input videos, and promoting exploration into human perceptions of time and space.
 
 <div style="text-align:center;">
-<img src="images/ost-illustrate20220106_RFS1459.gif" alt="illustrate movingimage manipuration by time and space" style="max-width:100%; height:auto;">
+<img src="images/ost-illustrate20220106_RFS1459.gif" alt="illustrate moving image manipulation by time and space" style="max-width:100%; height:auto;">
 </div><br>
-<!-- 
-本ライブラリでは、①再生断面の軌道のデザインと、その軌道データと入力映像を紐づけて出力する②レンダリングの部分が分かれています。
-#### 1. 軌道のデザイン
-本ツールは変換操作がモジュール化されており、その組み合わせにより再生断面の軌道をデザインしていきます。（実際には複数のクラス関数を組み合わせます）
-様々なモジュールを組み合わせていく度に軌道グラフが出力され、それらを確認しながら編集していくツールとなります。
-モジュールは時空間統合的な動きのデザインと時間の流れのデザインの2タイプに別れており、それらの組み合わせにより再生断面の軌道をデザインしていきます。
-#### 2. 映像のレンダリング
-編集した軌道データとソースとなる映像を紐付けてレンダリングを行います。
-PCメモリのRAM容量に応じて、連番イメージの一時ファイルをROMに保存し、最後に統合して映像データとして書き出されます。 
--->
 
-## Background 背景
-Development of this tool began in 2020 for filmmaker Ryu Furusawa, for whom several works have been produced.  
-
-本ツールは2020年より映像作家の古澤龍の作品制作のために開発が始められ、いくつかの作品が制作されました。
+## Background
+This tool began its development in 2020 for the production of works by the video artist Ryu Furusawa, and several works were produced.
 <ul><li><a href="https://ryufurusawa.com/post/711685011289554944/mid-tide-ryu-furusawa-multi-channel-video">Mid Tide,2023 </a></li>
 <li><a href="https://ryufurusawa.com/post/661228499174113280/wavesetude">Waves Etude,2020-2022</a></li>
 </ul>
-<!--
-<div style="text-align:center;">
-<img src="images/waves_etude_digest2020-2021 (Original)_00015.jpeg" alt="Waves Etude Ryu Furusawa" style="max-width:100%; height:auto;">
-<p><a href="https://ryufurusawa.com/post/661228499174113280/wavesetude">Waves Etude</a> Ryu Furusawa,2020-2022</p>
 
-<img src="images/midtide_exhibitionview1.jpg" alt="Mid Tide 2023 Ryu Furusawa" style="max-width:100%; height:auto;">
-<p><a href="https://ryufurusawa.com/post/711685011289554944/mid-tide-ryu-furusawa-multi-channel-video">Mid Tide </a> Ryu Furusawa,2023</p>
-</div> -->
-
-## How to Install インストール方法
-Before installing this library, please install the following external libraries
-
-このライブラリをインストールする前に、以下の外部ライブラリをインストールしてください
-
+## Installation
+Before installing this library, please install the following external libraries:
 ```bash
 pip install opencv-python numpy psutil easing-functions matplotlib librosa
 ```
-このライブラリをインストールする
+### To install this library:
 ```bash
 pip install git+https://github.com/ryufurusawa/imgtrans.git
 ```
 
-## Usage Flow　使い方の流れ
-### 1. library import ライブラリのインポート
-First, import the module.   
-まず、モジュールをインポートします。
-```python
+## Usage Flow
+### 1. Library Import
+First, import the module.
+```
+python
 import imgtrans
 ```
-### 2. Initialization of drawManeuver class
-入力のビデオパスと、計算の基準となるスリットの方向を指定してdrawManeuverクラスのインスタンスを作成します。
-```python
-#入力映像のパス
+
+### 2. Initialization of drawManeuver Class
+Specify the path of the input video and the direction of the slit that will be the basis for calculations to create an instance of the drawManeuver class.
+```
+# Path of the input video
 videopath= '/Users/Movies/20230917_RFS3108_mod-HD720p.mov'
 
-#drawManeuverクラスのインスタンスを作成する。
-#２つ目の変数はスリットが縦か横かを指定する。0=横スリット、1=縦スリットを示す。
+# Create an instance of the drawManeuver class.
+# The second variable specifies whether the slit is horizontal or vertical. 0 indicates horizontal slit and 1 indicates vertical slit.
 your_maneuver=imgtrans.drawManeuver(videopath,1)
 ```
-#### Slit Direction　スリットの方向 
-本ツールでは、スリットの方向を縦スリットと横スリットに限定し、最初に指定します。  
-スリットの方向の違いによって、今後の軌道の操作による結果は大きく変わります。
+
+#### Slit Direction  
+In this tool, the slit direction is limited to vertical and horizontal, and it's specified initially.  
+The results from future maneuver operations will vary greatly depending on the direction of the slit.
 ![slit-direction illustration](images/slit-direction.png)
 ![Alt text](images/slit-direction-transpostion-3dplotanimation.gif)
 ![Alt text](images/slit-direction-transpostion-rendering.gif)
 
-### 3. Maneuver Design 軌道のデザイン
-いくつかのクラスメソッドを組み合わせて再生断面の軌道をデザインします。  
-クラスメソッドは**1. 時空間統合的な動きを加える関数**と**2. 時間の流れを適応させる関数**の二つに大きく分けられます。  
-これらを実行することで、インスタンス変数の`data`に軌道データが格納されます。 
-各関数は、内部でインスタンス変数の`data`に新たな配列を加えたり、全体のデータへなんらかの数値を掛け合わせたり、といった処理を行っています。
-ここで編集される軌道データの内実は、出力映像が入力映像のどこのスリット（空間位置、時間位置）と対応しているか、座標変換として記述されています。  
-詳しくは、[`data`の構造](#dataの構造)をご確認ください。
+### 3. Maneuver Design
+Design the maneuver of the playback section by combining several class methods.  
+Class methods can be broadly divided into **1. Functions that add spatiotemporal movements** and **2. Functions that adapt the flow of time**.  
+By running these, the maneuver data is stored in the instance variable `data`.  
+Each function internally performs operations on the instance variable `data`, such as adding a new array or multiplying some value to the entire data.
+The maneuver data being edited here describes which slit (spatial position, time position) of the output video corresponds to the input video in terms of coordinate transformation.  
+For more details, please refer to the structure of [`data`](#dataの構造).
 
-#### 1. Main Functions for Spatiotemporal Integration 主な時空間統合的な動きを加える関数
-- [`addTrans`](#addtransselfframe_numsend_line1start_line0speed_roundtrue): 空間次元と時間次元のシンプルな置き換え。
-- [`addBlowupTrans`](#addblowuptransselfframe_numsdegspeed_roundtrueconnect_round1): addTransを継承しつつ時間次元のスケールの拡大縮小の操作
-- [`addInterpolation`](#addinterpolationselfframe_numsinterporation_directionz_directionaxis_positionreversal0cycle_degree90extra_degree0zslide0speed_roundtruerrange01): 時空間次元の遷移
-- [`addCycleTrans`](#addcycletransselfframe_numscycle_degree360zscalingfalsezslide0extra_degree0speed_roundtrue): 画面の中心線を軸に、再生断面を回転させていく。
-- [`addWaveTrans`](#addwavetransselfframe_numscycle_degreezdepthflow1zslide0speed_roundtrue): 動的な波の形状による再生断面を作成。
-- [`addEventHorizonTrans`](#addeventhorizontransselfframe_numszdepthz_osc1cycle_degree180flowfalsezslide0): 画面の中心と周辺で時間の進行速度が変わる。
+#### 1. Main Methods to Add Spatiotemporal Movement
+- [`addTrans`](#addtransselfframe_numsend_line1start_line0speed_roundtrue): Simple replacement of spatial and temporal dimensions.
+- [`addBlowupTrans`](#addblowuptransselfframe_numsdegspeed_roundtrueconnect_round1): Inherits addTrans while operating on the scaling of the temporal dimension.
+- [`addInterpolation`](#addinterpolationselfframe_numsinterporation_directionz_directionaxis_positionreversal0cycle_degree90extra_degree0zslide0speed_roundtruerrange01): Transition of spatiotemporal dimensions.
+- [`addCycleTrans`](#addcycletransselfframe_numscycle_degree360zscalingfalsezslide0extra_degree0speed_roundtrue): Rotating the playback section around the center line of the screen.
+- [`addWaveTrans`](#addwavetransselfframe_numscycle_degreezdepthflow1zslide0speed_roundtrue): Creating a playback section using dynamic wave shapes.
+- [`addEventHorizonTrans`](#addeventhorizontransselfframe_numszdepthz_osc1cycle_degree180flowfalsezslide0): The progression speed of time varies between the center and periphery of the screen.
 
 ![Alt text](images/Maneuver-examples-3dplot.gif)
 
-#### 2. Main Functions to Adapt the Flow of Time 主な時間の流れを適応させる関数
-- [`applyTimeForward`](#applytimeforwardselfslide_timenone): 配列全体に時間の順方向の流れを付与
-- [`applyTimeOblique`](#applytimeobliqueselfmaxgap): 時間のずれをスリットのごとに一定数づつ時間をずらす
-- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): 再生レート１からスロー再生になり最後に再生レート１に戻る
-- [`applyTimeLoop`](#applytimeloopselfslide_timefreq2stay_time0): シームレスなループ構造を付与。
-- [`applyTimeClip`](#applytimeclipselftrackslitintcliptimenone): 指定したスリットの時間の流れを指定した時間に固定する。
-- [`applyTimeBlur`](#applytimeblurselfbl_time): 時間的なぼかしを適用
+#### 2. Main Methods Adapting the Flow of Time
+- [`applyTimeForward`](#applytimeforwardselfslide_timenone): Provides forward flow of time to the entire array.
+- [`applyTimeOblique`](#applytimeobliqueselfmaxgap): Shifts time slightly for each slit.
+- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): Playback starts at rate 1, slows down, and then returns to rate 1.
+- [`applyTimeLoop`](#applytimeloopselfslide_timefreq2stay_time0): Imparts a seamless loop structure.
+- [`applyTimeClip`](#applytimeclipselftrackslitintcliptimenone): Fixes the flow of time for a specified slit to a specified time.
+- [`applyTimeBlur`](#applytimeblurselfbl_time): Applies a temporal blur.
 
 ![Alt text](images/timeManeuver-examples-3dplot.gif)
 
-#### Examples of Combinations 実際の組み合わせの例
+#### Examples of Combinations
 ```python
-# 軌道デザイン
+# Maneuver design
 bm.rootingA_interporation(270)
 bm.applyTimeLoop(1)
 ```
 ![Alt text](images/mixManeuver-examples-3dplot_harf.gif)
 
-####  Saving and loading maneuver data 軌道データの保存と読み込み
-別のソフトウェアで編集したり、レンダリング自体は後に行う場合や、同じ軌道データを用いて複数の映像データをレンダリングする場合などに、軌道データのみを保存、読み込みする場合があります。
+#### Saving and Loading Maneuver Data
+There are times when you might want to save just the maneuver data to edit in another software, to render the video later on, or to render multiple videos using the same maneuver data.
 
-##### Maneuver data storage 軌道データの保存
-書き出し用ディレクトリ内に保存されます。
+##### Saving Maneuver Data
+It will be saved in the designated output directory.
 ```python
 your_maneuver.data_save()
 ```
-##### Loading maneuver data 軌道データの読み込み
-初期化する場合。
+
+##### Loading Maneuver Data
+If initializing.
 ```python
 import numpy as np
 your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1,datapath="path/to/data.npy" )
-#軌道データを確認する
+# Checking the maneuver data
 print(your_maneuver.data.shape)
 ```
-`data`だけ置き換えする場合。
+For only replacing the `data`.
 ```python
 import numpy as np
 your_maneuver.data=np.read("path/to/data.npy" )
 ```
-いずれも、読み込ませる映像データのサイズやフレーム数で示せる座標の範囲内に治っている必要があります。例えば、入力映像の解像度がフルハイビジョン(1920x1080)
-であるのに、参照する縦スリットの横位置が2000であった場合、エラーとなります。
+In either case, the loaded video data must be within a coordinate range defined by the size and frame count of the video. For example, if the input video has a resolution of Full HD (1920x1080), and the reference vertical slit's horizontal position is 2000, an error will occur.
 
+### 4. Visualization
+This feature visually represents the instance variable `data` to make it easier to understand. 
+You can visualize the data in both 2D and 3D plots.
+In the 3D graph, you can intuitively grasp the overall movement of the maneuver. On the other hand, the details of the passage of time can be understood more clearly by looking at the 2D graph. By combining these two methods, you can design fine details of time movement, such as time going backward on the left side of the screen and forward on the right. 
+Visualization image data is saved in an output directory created in the same path as the input video.
 
-### 4. Visualization ヴィジュアライズ
-この機能は、インスタンス変数の`data`を視覚的に表現し、理解しやすくするためのものです。  
-2Dプロットと3Dプロットの２つの方法でデータを可視化できます。  
-3Dグラフでは、軌道の全体的な動きを直感的に把握することができます。一方、時間の流れの詳細は2Dグラフを見ることでより明確に理解することができます。  
-この2つの方法を組み合わせることで、たとえば画面の左側では時間が逆行し、右側では時間が順行するといった、時間の動きの細かな設計も行うことができます。  
-ヴィジュアライズのイメージデータは、入力映像と同じパスに生成された書き出し用ディレクトリ内に保存されます。
+#### Slit Color
+It is possible to design behavior where the spatial direction of the video is inverted. To explicitly indicate the direction of such spatial dimensions, the visualization's slit rendering is distinguished by a green-red gradient. 
+1. For vertical slits, green corresponds to the left edge, and red to the right output position.
+1. For horizontal slits, green corresponds to the top edge, and red to the bottom output position.
 
-#### color of slits スリットの色
-映像の空間方向が反転する振る舞いも設計可能です。そのような空間次元の方向を明示する意味で、ヴィジュアライズのスリットの描画は緑-赤のグラデーションにより区別されています。  
-1. 縦スリットの場合は、緑が左端、赤が右端の出力位置に対応します。
-1. 横スリットの場合は、緑が上端、赤が下端の出力位置に対応します。
-
-#### 2d plot
-2次元の軌道グラフは、軌道デザインに関する操作が行われるたびに逐次書き出されます。  
-このグラフは、出力映像の時間を横軸として、以下の3つの要素を一つの図として表示します。
-1. 空間方向動き
-2. 時間方向の動き
-3. 時間方向の動きの再生レート
+#### 2D Plot
+The 2D maneuver graph is output sequentially every time a maneuver design operation is performed.
+This graph displays the following three elements in a single figure, with the output video's time on the x-axis.
+1. Movement in the spatial direction
+2. Movement in the time direction
+3. Playback rate of movement in the time direction
 
 ```python
 your_maneuver.maneuver_2dplot()
 ```
-デフォルト設定では、スリットは20本で生成されます。maneuver_2dplotメソッドの第一引数thread_numを変更することで、表示するスリットの本数を調整できます。
+By default, 20 slits are generated. By changing the first argument, thread_num, of the maneuver_2dplot method, you can adjust the number of slits displayed.
 ```python
-# 50本のスリットを描画
+# Drawing 50 slits
 your_maneuver.maneuver_2dplot(50)
 ```
 
-軌道デザインのコードとその軌道データの2Dプロット。  
+Combining the maneuver design code and the 2D plot of that maneuver data.
 ```python
-#1 時空間統合的な動きのデザインのモジュールを連結していく。
-#ノーマルな状態を100フレーム分追加する
+# 1. Sequentially connecting the modules for spatiotemporal movement design.
+# Add 100 frames of normal state
 your_maneuver.addFlat(100)
-#ノーマルな状態から映像フレームの左端を軸に90度回転させます。
+# Rotate 90 degrees around the left edge of the video frame from the normal state.
 your_maneuver.addInterpolation(100,0,1)
-#100フレーム分、時間と空間を交換した軌道を加えます。
+# Add 100 frames of a maneuver that swaps time and space.
 your_maneuver.addTrans(100)
 
-#2 時間の振る舞いに関するモジュールを組み合わせる。
-#軌道全体を時間方向への１フレームづつ送ります。
+# 2. Combine modules related to time behavior.
+# Move the entire maneuver forward one frame at a time.
 your_maneuver.applyTimeForward(1)
-#軌道全体を時間方向の動きに対してブラーを加え滑らかに変化させる。
+# Apply blur to the entire maneuver's movement in the time direction to smooth the transition.
 your_maneuver.applyTimeblur(50)
 
-#2Dプロット出力
+#### Outputting the 2D plot
 your_maneuver.maneuver_2dplot()
 ```
 
 ![visualized 2dplot image](images/GX010161_2023_0616_Vslit_Flat100+Interpolation300(ID1-ZD0-AP0-REV0)+Freeze30+Transposition300+CycleTrans_addExtend_TimeForward1_TimeBlur30_TimeBlur100_SpaceBlur100_20thread.png)
 
-逐次書き出しが不要の場合は、クラス変数の設定を変更してください。　　
+If you don't need sequential output, please change the class variable's setting.
 ```python
 your_maneuver.auto_visualize_out = False
 ```
-#### 3D plot
-三次元グラフへの軌道プロットアニメーションを出力する場合は、明示的に書く必要があります。
+#### 3D Plot
+To output an animation of the maneuver plot to a 3D graph, you need to specify explicitly.
 ```python
 your_maneuver.maneuver_3dplot()
 ```
 
 ![visualized 3dplot gifimage](images/GX010148_2023_0617_Vslit_Flat100+Interpolation300(ID1-ZD0-AP0-REV0)+Freeze30+Transposition300+CycleTrans_addExtend_TimeForward1_TimeBlur30_TimeBlur100_SpaceBlur100_3dPlot.gif)
 
-### 5. Rendering レンダリング
-入力の映像データを、インスタンス変数に`data`をもとに、時空間を組み直し、映像のレンダリングを行います。
 
-#### Structure of `data`　データの構造
-インスタンス変数`data`には軌道データが格納されています。その`data`の構造について解説します。  
-本モジュールでは、スリットの方向を最初に横か、縦かを定義し、映像データへのアクセスをピクセル単位ではなくスリット単位としています。  
-こうすることで、各映像データの最小単位であるスリットへのアクセスは二次元の座標（一次元位置（縦スリットであれば横）、時間）を指定することでアクセス可能となります。
-`data`に保存される軌道データとは出力映像を構成する各スリットが入力映像を構成するスリットのどの座標（一次元位置、時間位置）から持ってこられたものかを示す、座標変換のマップです。
-そのため、各ピクセルの色彩のデータは保存されていません。あくまで座標変換の対応が記述されているだけです。
-データは、出力映像のフレーム数と、出力映像を構成するスリット数、この2次元の各データに2つのチャンネルを持たせた三次元のNUMPY配列として保存されています。
+### 5. Rendering
+This section will demonstrate how to reconfigure the spatiotemporal layout of the input video data based on the instance variable `data`, and then render the video.
 
-1. 参照される入力映像のスリット位置
-2. 入力映像の時間位置
+#### Structure of `data`
+The instance variable `data` stores the maneuver data. This section describes the structure of this `data`.  
+In this module, we first define whether the slit direction is horizontal or vertical, and access the video data not by pixel but by slit.  
+By doing this, access to each slit, which is the smallest unit of the video data, is possible by specifying the two-dimensional coordinates (one-dimensional position (horizontal for vertical slits) and time).  
+The maneuver data stored in `data` indicates from which coordinates (one-dimensional position, time position) of the input video's slits each slit of the output video is taken, and it's a map of coordinate conversion.  
+Therefore, the color data of each pixel is not stored. It only describes the correspondence of coordinate conversion.  
+The data is stored as a three-dimensional NUMPY array that has two channels for each data in the two dimensions of the number of frames of the output video and the number of slits that make up the output video.
+1. Slit position of the referenced input video
+2. Time position of the input video
 
-以下のコードは、`data`を調べるいくつかのサンプルです。
-
+Here are some samples to examine `data`:
 ```python
-print("出力する映像のフレーム数",your_maneuver.data.shape[0])
-print("スキャンする数、縦スリットの場合、出力する映像の横幅のピクセル数",your_maneuver.data.shape[1])
-print("出力映像の最初のフレームの右端のスリットが、入力映像のどの時間から参照されたか？",your_maneuver.data[0,-1,1])
-print("入力映像から参照する時間位置の最大値",np.max(your_maneuver.data[:,:,1]))
+print("Number of frames in the output video", your_maneuver.data.shape[0])
+print("Scan count, in the case of vertical slits, pixel width of the output video", your_maneuver.data.shape[1])
+print("From what time of the input video was the slit on the far right of the first frame of the output video referenced?", your_maneuver.data[0,-1,1])
+print("Maximum time position to reference from the input video", np.max(your_maneuver.data[:,:,1]))
 
-#一つ目のスリットの出力位置の推移を描画する。
+# Plotting the output position transition of the first slit.
 plt.plot(your_maneuver.data[:,0,0])
-#一つ目のスリットの入力の時間位置の推移を描画する。
+# Plotting the input time position transition of the first slit.
 plt.plot(your_maneuver.data[:,0,2])
 ```
-#### Video Rendering 映像のレンダリング　
-レンダリング映像データは、入力映像と同じパスに生成された書き出し用のディレクトリ内に保存されます。
+
+#### Video Rendering
+The rendered video data is stored in the export directory created in the same path as the input video.
 ```python
 your_maneuver.transprocess()
 ```
-高解像度かつ、長めの映像の書き出しを行う場合には、分割して書き出すことで対応できます。端末のスペックに応じて設定して下さい。
-中間ファイルはtmpディレクトリを一時的に作成して、そこにnumpyの配列データ（二次元イメージデータ）として保存します。
+If you want to export high-resolution and longer videos, you can handle it by splitting the export. Please set it according to your terminal specs. 
+Intermediate files temporarily create a tmp directory and save the numpy array data (two-dimensional image data) there.
 ```python
-your_maneuver.transprocess(10)#10回に分けて書き出す。
+your_maneuver.transprocess(10) # Split and export in 10 parts.
 ```
-途中からの書き出しなど、分割したレンダリングの手法もオプションとして設置できます。  
-書き出し用のディレクトリ内にtmpディレクトリがあり、そこに中間データが保存されている必要があります。もし無いと最終的にデータ統合する段階でエラーとなります。
-以下の例では10段階の５段階目からレンダリングを行っています。
+You can also set up methods for splitting rendering as an option.  
+There must be a tmp directory in the export directory, and the intermediate data must be stored there. Otherwise, an error will occur in the final data integration process.  
+In the example below, rendering is performed from the 5th step of 10 steps.
 ```python
-your_maneuver.transprocess(10,sep_start_num=5,sep_end_num=10)
+your_maneuver.transprocess(10, sep_start_num=5, sep_end_num=10)
 ```
-out_type変数にて指定することで静止画像の連番として書き出すことも可能です。
-
+By specifying with the out_type variable, you can also export as a series of still images.
 ```python
 your_maneuver.transprocess(out_type=0) #0=still, 1=video, 2=both 
 ```
-詳細は [`transprocess`](#transprocessメソッド)こちらを参照ください。
+For details, refer to [`transprocess`](#transprocess-method).
 
-#### Audio Rendering 音声のレンダリング
-音声処理自体は、SuperColliderで行います。  
-まず、SuperColliderで読み込ませるコードをクラスメソッドの`scd_out`から出力します。  
-`scd_out`では、インスタンス変数の`data`で記述されたスリットの動きのデータから、音声出力するために、スリットの本数を間引いた上で出力します。   
-音声ファイル名はインスタンス変数`sc_FNAME`にて指定できます。デフォルトでは、[入力映像のファイル名.aiff] としています。入力映像と同じディレクトリに保存されていることを確認して下さい。  
+#### Audio Rendering
+Audio processing itself is done in SuperCollider.  
+First, output the code to be loaded in SuperCollider from the class method `scd_out`.  
+In `scd_out`, the data of the slit movement described in the instance variable `data` is output after reducing the number of slits for voice output.   
+The audio file name can be specified with the instance variable `sc_FNAME`. By default, it is set as [input video file name.aiff]. Please make sure it is saved in the same directory as the input video.  
 
-'scd_out'の第一引数にて、同時発話数を指定可能です。デフォルトでは、7つとなっています。  
-あまり数を増やしすぎると、わずかな時間差により周波数の打ち消しが発生し、音量が極端に下がったりします。軌道の編集内容や、素材となる音の音響的な特徴を元に適切な数を指定してください。
+The simultaneous utterance count can be specified as the first argument to 'scd_out'. The default is set to 7.  
+If you increase the number too much, the volume may drop drastically due to frequency cancellation caused by a slight time difference. Please specify an appropriate number based on the maneuver editing content and the acoustic characteristics of the source sound.
 
 ```python
 bm.sc_FNAME="GX010230-t-AIFF.aiff"
 bm.scd_out(7)
 ```
-上記を実行すると、４つのCSVdataと、４種のSuperColliderのプログラム.scdファイルが出力されます。
+Upon running the above, four CSV data and four SuperCollider program .scd files will be output.
 
-##### 4 types of CSV 4つの軌道データのCSV
-1. *_7threads.csv : スリットの時間位置。
-1. *_Rate_7threads.csv : スリットの再生レート
-1. *_inPanMap_7threads.csv : スリットの空間位置
-1. *_nowDepth_7threads.csv : 一枚のフレーム内における時間のずれ幅
+##### 4 CSV Data of Maneuver
+1. *_7threads.csv : Time position of the slit.
+1. *_Rate_7threads.csv : Playback rate of the slit.
+1. *_inPanMap_7threads.csv : Spatial position of the slit.
+1. *_nowDepth_7threads.csv : Time offset within a single frame.
 
-##### 4 types of SCD 4つのscdファイル
-1. *_SC_Play-7voices.scd : マルチ再生、再生レートに準じてピッチが変化する
-1. *_SC_Grain-7voices.scd : グラニュラーシンセシスを用いたマルチ再生。再生レートに関係なくピッチは変化しない。
-1. *_SC_Rev_Play-7voices.scd : マルチ再生。時間のずれ幅に応じてリバーブの適応。
-1. *_SC_Rev_Grain-7voices.scd : グラニュラーシンセシスを用いたマルチ再生に加え、時間のずれ幅に応じてリバーブを加える。
+##### 4 SCD files
+1. *_SC_Play-7voices.scd : Multi-play, pitch changes according to the playback rate.
+1. *_SC_Grain-7voices.scd : Multi-play using granular synthesis. The pitch does not change regardless of the playback rate.
+1. *_SC_Rev_Play-7voices.scd : Multi-play. Apply reverb according to the time offset.
+1. *_SC_Rev_Grain-7voices.scd : In addition to multi-play using granular synthesis, add reverb according to the time offset.
 
-サンプルの映像ファイルを確認して、その効果と特徴を参考にしてください。
+Please check the sample video file to refer to its effects and characteristics.
 
-##### Running scd files scdファイルの実行
-scdファイルのうち、いずれかをSuperColliderに読み込ませます。　　
-いずれも、リアルタイムに音響処理を実行し、それを仮想サーバーにてレコーディングし音声ファイルとして保存させます。
-保存される音声ファイルは映像レンダリングデータと同じディレクトリに保存されます。  
-音声データやCSVデータの読み込みに時間がかかるため、一括の実行を避け、2つの工程に分けています。  
-`()`で括られている内容を、順に実行しください。
+##### Running the scd file
+Load one of the scd files into SuperCollider.  
+All of them perform sound processing in real-time and save it as an audio file on a virtual server. 
+The saved audio file will be stored in the same directory as the video rendering data.  
+Since it takes time to read the audio data and CSV data, we avoid running them all at once and divide them into two processes.  
+Please execute the contents enclosed in `()` in order.
 
 ![Alt text](images/scd_sample.png)
  
-###### 1. Audio Setting and Data Loading AudioのSettingとデータの読み込み
-AudioのSetting、`SynthDef`によるシンセの定義、音声データの読み込み、CSVdataの読み込みを行います。  
-オーディオのアウトプットデバイスの設定は各自の環境に合せ書き換えてください。  
-デフォルトでは以下のようになっています。
+###### 1. Audio Settings and Data Loading
+Set up the audio, define the synth with `SynthDef`, load the audio data, and load the CSV data.  
+Please customize the audio output device setting according to your environment.  
+By default, it is set as follows:
 
 ```supercollier
-Server.default.options.outDevice_("MacBook Proのス");
+Server.default.options.outDevice_("MacBook Pro's speaker");
 ```
-以下を実行することで、指定可能なデバイスリストがコンソールwindowに出力されます。
+By running the below, a list of available devices will be output to the console window.
 ```supercollier
 ServerOptions.devices; 
 ```
-###### 2. Playback and Recording of `Synth` 再生とレコーディング
-定義した `Synth`の再生をループ処理によりリアルタイムに再生を行い、Recordingを行います。  
-Recordingと同時にUnix commandによりレンダリング映像ファイルをQuickTimePlayerにて再生させます。
-やや時間のギャップは入りますが、映像と音声を擬似的に同期した状態で再生できます。
-QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環境においてはこの部分をコメントアウトして対応してください。
+
+###### 2. Playing `Synth` and Recording
+Perform real-time playback of the defined `Synth` with loop processing and record.  
+At the same time as recording, play the rendering video file in QuickTime Player with a Unix command. 
+There will be a slight time gap, but you can play the video and audio in a pseudo-synchronized state. 
+This can only be executed on a Mac with QuickTime Player, so if you are in a different environment, please comment out this part and adapt accordingly.
 ```unixcmd
 "open -a 'QuickTime Player' '/Users/Movies/sample-raw-mov/sample_Vslit.mp4' ".unixCmd;
 ```
-#### Audio and video coupling 音声と映像の結合
-特にプログラムを用意していません。
-映像編集ソフトにて、ビデオと音声を時間同期させた上で、再書き出しを行ってください。
+#### Combining Voice and Video
+There is no specific program prepared for this.
+Please synchronize the video and audio in a video editing software and then re-export.
 
-## drawManeuver class
+## drawManeuver Class
 
-このクラスはImgtransライブラリのメインとなるものです。
+This class is the main component of the Imgtrans library.
 
-### Class Variables クラス変数:
-- `imgtype`: レンダリングにおける静止画像のフォーマット（デフォルトは ".jpg"）
-- `img_size_type`: 出力イメージのサイズの設定。入力の映像の高さをh,幅をwとすると、`0`:h,w `1`:w,w*2 `2`:総フレーム数分 `3`: square （デフォルトは `0`）
-- `outfps`: 出力のフレームレート（デフォルトは 30）
-- `auto_visualize_out`: 自動可視化の設定（デフォルトは True）
-- `default_debugmode`: デフォルトのデバッグモード設定（デフォルトは False）
-- `audio_form_out`: オーディオ形式出力の設定（デフォルトはFalse）
-- `embedHistory_intoName`: 名前への履歴埋め込みの設定（デフォルトは True）
-<!-- - `progressbarsize`: プログレスバーサイズ（デフォルトは 50） -->
-<!-- - `sepVideoOut`: セパレート出力設定 -->
+### Class Variables:
+- `imgtype`: Format of the still image in rendering (default is ".jpg")
+- `img_size_type`: Setting for the output image size. Given the height as h and width as w of the input video, `0`:h,w `1`:w,w*2 `2`: Total number of frames `3`: square (default is `0`)
+- `outfps`: Frame rate for the output (default is 30)
+- `auto_visualize_out`: Setting for automatic visualization (default is True)
+- `default_debugmode`: Default debug mode setting (default is False)
+- `audio_form_out`: Setting for audio format output (default is False)
+- `embedHistory_intoName`: Setting for embedding history into the name (default is True)
 
-### List of all class methods 全クラスメソッドのリスト:
-- [`__init__`](#__init__メソッド): ビデオパスを受け取り初期化する。
-- [`append`](#appendメソッド): 別で作成していた軌道データをインスタンス変数としてもつ軌道データの後ろに追加する。
-- [`prepend`](#prependメソッド): 別で作成していた軌道データを、インスタンス変数としてもつ軌道データの先頭にmaneuverを追加する。
-- 軌道デザインに関わるクラスメソッド
-    - 時空間統合的な動きを加える関数
-        - [`addFlat`](#addFlatメソッド): フラットな配列を追加。
-        - [`addFreeze`](#addFreezeメソッド): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
-        - [`addSlicePlane`](#addSlicePlaneメソッド): 指定した空間位置で、時間軸方向に沿って切り出した断面フレームを指定したフレーム数追加。
-        - Transposition 空間次元と時間次元の置き換え
-            - [`addTrans`](#addTransメソッド): 空間次元と時間次元のシンプルな置き換え。縦スリットの場合はX軸とT軸が置換。横スリットの場合はY軸とT軸が置換。
-            - [`addKeepSpeedTrans`](#addKeepSpeedTransメソッド): 既存のフレームデータの速度を維持した状態で、新しいフレームを生成し追加する。特定の空間領域に達するまで繰り返されます。
-            - [`insertKeepSpeedTrans`](#insertKeepSpeedTransメソッド): `addKeepSpeedTrans`の発展版で、`self.data`に対して、`after_array`で受け取った配列の間を滑らかに補う。
-            - [`addWideKeyframeTrans`](#addWideKeyframeTransメソッド): `addKeyframeTrans`の発展版。`midtide`のように、インプット画像よりもサイズを大きくして出力させる場合に使用する。
-            - [`addBlowupTrans`](#addBlowupTransメソッド): blowupの動きをキーフレームにより詳細に制御するメソッド。このメソッドは、時間軸の解像度を徐々に変化させる試みがなされており、基本的にはXYT Transと同様の動きを持っています。時間軸のキーフレームに関する詳細な制御を行うためのキーパラメータは、`timevalues`と`timepoints`です。
-       - 時空間次元の遷移
-            - [`addInterpolation`](#addInterpolationメソッド): 与えられたパラメータをもとに補間を行い、結果をデータに追加する。
-            - [`rootingA_interporation`](#rootingA_interporationメソッド): 複数のaddInterpolationを組み合わせる。ジグザグとした動き。
-            - [`rootingB_interporation`](#rootingB_interporationメソッド): 複数のaddInterpolationを組み合わせる。ドミノが坂道を転がっていくような動き。
-            - [`addCycleTrans`](#addCycleTransメソッド): XYTの置換を補完的に遷移させる。画面の中心線を軸に、再生断面を回転させていく。
-            - [`addCustomCycleTrans`](#addCustomCycleTransメソッド): addCycleTransの回転の中心軸を動かすことができる。
-        - 波打つ再生断面
-            - [`addWaveTrans`](#addWaveTransメソッド): 時間と空間のピクセルのマトリクスに対して、動的な波の形状による再生断面を作成。空間軸を固定するかの切り替えも可能。
-            - [`addEventHorizonTrans`](#addEventHorizonTransメソッド): 空間領域は変更なし。画面の中心と周辺で時間の進行速度が変わる。前進、後退するカメラによりキャプチャされる映像のオプティカルフローをキャンセルする。
+### List of All Class Methods:
+- [`__init__`](#__init__): Initializes by receiving the video path.
+- [`append`](#append): Appends the maneuver data created separately to the end of the maneuver data held as an instance variable.
+- [`prepend`](#prepend): Adds a maneuver to the beginning of the maneuver data held as an instance variable, which was created separately.
 
-    - 時間に特化した軌道操作
-        - [`applyTimeForward`](#applyTimeForwardメソッド): 配列全体に時間の順方向の流れ（単位はslide_time）を付与
-        - [`applyTimeOblique`](#applyTimeObliqueメソッド): 時間の斜め効果を適用
-        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlowメソッド): 基本、現在がスロー再生状態の場合に使用する。イントロ、アウトロに通常の再生速度の映像を加え、その間をイーズ処理することで滑らかに接続させる。
-        - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtendメソッド): 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。`fade`引数をTrueでスピード０に落ち着かせる。
-        - [`applyTimeLoop`](#applyTimeLoopメソッド): 与えた軌道配列全体の時間を前半、順方向、後半、逆転して、最後にまた順方向へながれ、最初と終わりの時間差がない。そのままループ再生すればシームレスなループが作られる。デフォルト周波数２hzでしか現在対応できていない。
-        - [`applyTimeClip`](#applyTimeClipメソッド): 指定したスリットの時間の流れを指定した時間に固定する。
-        - [`applyTimeSlide`](#applyTimeSlideメソッド): 一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
-        - [`applyInOutGapFix`](#applyInOutGapFixメソッド): シームレスループ作成のための補助的な関数。最初と最終フレームの差分を計算し、必要に応じてフレームの調整を行う。
-        - [`applySpaceBlur`](#applySpaceBlurメソッド): 空間的なぼかしを適用
-        - [`applyTimeBlur`](#applyTimeBlurメソッド): 時間的なぼかしを適用
-        - [`applyCustomeBlur`](#applyCustomeBlurメソッド): カスタム範囲のブラーを適用
-    - その他の軌道操作
-        - [`addFreeze`](#addFreezeメソッド): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
-        - [`preExtend`](#preExtendメソッド): 与えた軌道配列の１フレーム目を手前に延長させる。
-        - [`addExtend`](#addExtendメソッド): 与えた軌道配列の最終フレームを延長させる。Zのレートは0になる。
-        - [`zCenterArrange`](#zCenterArrangeメソッド): 軌道配列と入力映像のフレーム数を照らし合わせ、入力映像の時間的な意味での中心
-
-- マニューバーの情報出力に関するメソッド
-    - [`dataCheck`](#dataCheckメソッド):`data`の情報をコンソールに出力する。
-    - [`info_setting`](#info_settingメソッド): データをスレッド数に応じて設定し、再生レートやパンを計算します。
-    - [`maneuver_CSV_out`](#maneuver_CSV_outメソッド): CSVファイルに軌道配列データを出力する。軌道の可視化を外部のソフトウェア（エクセルなど）にて作成する場合に使用する。
-    - [`scd_out`](#scd_outメソッド): supercolliderに読み込ませるサウンドプロセスコードを出力し、関連するデータをCSVで保存します。
-    - [`data_save`](#data_saveメソッド): 軌道データをnumpyのファイルとして保存します。
-    - [`split_3_npysavereturn`](#split_3_npysavereturnメソッド): 軌道データのアウトイメージの横幅が入力の３倍サイズを指定した場合に使用。Left, center, Rightとして3分割して保存。3分割されたNPYファイルのパスを配列で返す。
-- マニューバーの可視化ファイルの出力に関するメソッド
-    - [`maneuver_2dplot`](#maneuver_2dplotメソッド): 2Dプロットを作成して、それに関連するデータを画像として保存します。
-    - [`maneuver_3dplot`](#maneuver_3dplotメソッド): 3Dプロットを生成し、その画像や動画を保存するメソッドです。
-- 映像renderingに関するメソッド
-    - [`transprocess`](#transprocessメソッド): 映像をトランスプロセスします。このメソッドは映像のレンダリングを行い、セパレートレンダリングや他のオプションをサポートしています。
-    - [`transprocess_typeB`](#transprocess_typeBメソッド): 映像のレンダリングを行うメソッド。セパレートプロセスをアウトプットの時間次元ではなく、インプットの時間次元を分割させて処理します。時間軸方向に極端に幅を広くとるようなマニューバーが組み込まれている場合はこのメソッドを使うことで、レンダリング速度が上がります。
-    - [`animationout`](#animationoutメソッド): 出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力する。そのため、映像のレンダリングを行った後にしか実行できません。
+- **Classes related to maneuver design**
+    - **Functions that add space-time integrated motion**
+        - [`addFlat`](#addFlat): Adds a flat array.
+        - [`addFreeze`](#addFreeze): Creates and adds an array of the final row for both the time and space axes for the number of frames specified by "frame_nums".
+        - [`addSlicePlane`](#addSlicePlane): Adds a cross-sectional frame sliced along the time axis at the specified spatial position for the specified number of frames.
+        - **Transposition of space and time dimensions**
+            - [`addTrans`](#addTrans): Simple transposition of space and time dimensions. For vertical slits, X-axis and T-axis are transposed. For horizontal slits, Y-axis and T-axis are transposed.
+            - [`addKeepSpeedTrans`](#addKeepSpeedTrans): Creates and adds a new frame while maintaining the speed of existing frame data. Repeated until a specific spatial area is reached.
+            - [`insertKeepSpeedTrans`](#insertKeepSpeedTrans): Advanced version of `addKeepSpeedTrans`. Smoothly interpolates between the arrays received by `after_array` for `self.data`.
+            - [`addWideKeyframeTrans`](#addWideKeyframeTrans): Advanced version of `addKeyframeTrans`. Used when outputting at a size larger than the input image, like `midtide`.
+            - [`addBlowupTrans`](#addBlowupTrans): A method to control blowup motion in more detail with keyframes. This method attempts to gradually change the resolution of the time axis, and basically has a movement similar to XYT Trans. The key parameters for detailed control of the time axis keyframes are `timevalues` and `timepoints`.
+       - **Transition of space-time dimensions**
+            - [`addInterpolation`](#addInterpolation): Interpolates based on the given parameters and adds the results to the data.
+            - [`rootingA_interporation`](#rootingA_interporation): Combines multiple addInterpolations. Zigzag motion.
+            - [`rootingB_interporation`](#rootingB_interporation): Combines multiple addInterpolations. Motion like dominos rolling down a slope.
+            - [`addCycleTrans`](#addCycleTrans): Transitionally substitutes XYT. Rotates the playback cross-section around the centerline of the screen.
+            - [`addCustomCycleTrans`](#addCustomCycleTrans): Able to move the center axis of rotation in addCycleTrans.
+        - **Wavy playback cross-section**
+            - [`addWaveTrans`](#addWaveTrans): Creates a playback cross-section with a dynamic wave shape for the pixel matrix of time and space. It's also possible to toggle fixing the spatial axis.
+            - [`addEventHorizonTrans`](#addEventHorizonTrans): No change in spatial area. The progression speed of time changes between the center and periphery of the screen. Cancels the optical flow of video captured by a camera that moves forward and backward.
+- **Time-focused maneuver**
+        - [`applyTimeForward`](#applyTimeForward): Apply forward time flow (in slide_time units) to the entire array.
+        - [`applyTimeOblique`](#applyTimeOblique): Apply oblique time effect.
+        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
+        - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
+        - [`applyTimeLoop`](#applyTimeLoop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
+        - [`applyTimeClip`](#applyTimeClip): Fix the time flow of specified slits to a specific time.
+        - [`applyTimeSlide`](#applyTimeSlide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
+        - [`applyInOutGapFix`](#applyInOutGapFix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
+        - [`applySpaceBlur`](#applySpaceBlur): Apply spatial blur.
+        - [`applyTimeBlur`](#applyTimeBlur): Apply temporal blur.
+        - [`applyCustomeBlur`](#applyCustomeBlur): Apply custom range blur.
+    - Other maneuver functions
+        - [`addFreeze`](#addFreeze): Generate and add frames specified by "frame_nums" to both the time and spatial axes based on the final column's array.
+        - [`preExtend`](#preExtend): Extend the first frame of the given maneuver array forward.
+        - [`addExtend`](#addExtend): Extend the final frame of the given maneuver array. Z-rate becomes 0.
+        - [`zCenterArrange`](#zCenterArrange): Match the number of frames in the maneuver array with the input video's temporal center.
+- **Methods for maneuver data output**
+    - [`dataCheck`](#dataCheck): Output information about `data` to the console.
+    - [`info_setting`](#info_setting): Configure data based on the number of threads, calculate playback rates and pans.
+    - [`maneuver_CSV_out`](#maneuver_CSV_out): Output maneuver array data to a CSV file for visualization in external software (e.g., Excel).
+    - [`scd_out`](#scd_out): Output SuperCollider sound processing code to load and save related data in CSV.
+    - [`data_save`](#data_save): Save maneuver data as a numpy file.
+    - [`split_3_npysavereturn`](#split_3_npysavereturn): Used when the width of the out image of the maneuver data is three times the input. It splits and saves as Left, center, and Right NPY files and returns an array with the paths of the three split files.
+- **Methods for maneuver visualization file output**
+    - [`maneuver_2dplot`](#maneuver_2dplot): Create a 2D plot and save related data as an image.
+    - [`maneuver_3dplot`](#maneuver_3dplot): Generate a 3D plot and save images or videos.
+- **Methods for video rendering**
+    - [`transprocess`](#transprocess): Transprocess the video. This method handles video rendering, separate rendering, and other options.
+    - [`transprocess_typeB`](#transprocess_typeB): Method for video rendering. Divides the input time dimension instead of the output time dimension for separate processing. Use this method when there are maneuvers that widen the time axis direction significantly for faster rendering.
+    - [`animationout`](#animationout): Reference the rendered video data, plot pixel colors from images onto a 3D graph, and output the result as an animation. Can only be executed after video rendering.
 
 ## `__init__`
-`__init__`メソッドは、ビデオのパス、スキャン方向、データ、およびフォルダ名の属性を引数として受け取る。このメソッドは、下記のインスタンス変数を初期化し、ビデオパスと同じレベルに出力用のディレクトリを作成し、そのディレクトリに移動する。最終的に出力されるあらゆるファイルはこのディレクトリ内に保存されます。
+The `__init__` method takes the attributes of the video path, scan direction, data, and folder name as arguments. This method initializes the instance variables below, creates an output directory at the same level as the video path, and moves to that directory. All output files will be saved within this directory.
 
-### argument 引数
-- `videopath` (str): ビデオファイルへのパス。
-- `sd` (bool): スリットの方向。`True`で縦スリット`False`で横スリット
-- `datapath` (str, optional): 以前に保存していた軌道データを引き継ぐ場合に使用するオプション。Numpyの多次元配列として保存されたnpyデータのパス。
-- `foldername_attr` (str, optional): オプションとして出力用のディレクトリの名称に、指定した名称を付け加えます。
+### Parameters
+- `videopath` (str): Path to the video file.
+- `sd` (bool): Direction of the slit. `True` for vertical slit, `False` for horizontal slit.
+- `datapath` (str, optional): Optional path to previously saved maneuver data, saved as a multi-dimensional array in npy format.
+- `foldername_attr` (str, optional): Optionally appends the specified name to the output directory's name.
 
-### インスタンス変数
-1. **data**: 最小単位をスリットとする再生断面の軌道データ。デフォルトは空のリスト。
-1. **width**: ビデオの幅。`videopath` より読み込んだビデオ情報を反映する。
-1. **height**: ビデオの高さ。
-7. **count**: ビデオの総フレーム数。
-8. **recfps**: ビデオのfps（フレームレート）。出力のフレームレートは[クラス変数](#クラス変数)にて設定する。
-10. **scan_direction**: スリットの向きとスキャン方向の定義。初期化メソッドの引数`sd`がそのまま適応される。
-11. **scan_nums**: スキャンする数。4k解像度で縦スリットの場合は3840
-12. **slit_length**: 1スリットの画素数。4k解像度で縦スリットの場合は2160
-15. **out_name_attr**:初期化メソッドの引数`foldername_attr` がそのまま適応される。
-1. **out_videopath**: 出力したビデオのパスを保持する。初期値は空。[animationout](#animationoutメソッド)にて呼び出す。
-18. **sc_FNAME**: 入力のヴィデオのファイル名に ".AIFF" を追加したものを自動で受け取るように初期設定されています。音声処理をするためのsuper collider用のコードを出力する際に使用します。
-13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: 軌道配列を音声処理用にスリットの分割数を落とし最適化した配列
-<!-- 1. **cap**: OpenCVのVideoCaptureオブジェクト。入力ビデオの情報を持つ。
-16. **log**: ログのカウンタ。デフォルトは0。マニューバーの編集工程のログを取っています。
-17. **infolog**: インフォログのカウンタ。デフォルトは0。
-1. **ORG_NAME**: 入力ビデオパスから取得したオリジナルの名前。
-2. **ORG_PATH**: 入力ビデオパスから取得したオリジナルのパス。
-3. **ORG_FNAME**: 入力ビデオパスから取得したオリジナルのファイル名。
-14. **sd_attr**: スキャン方向が0の場合は"Hslit"、それ以外の場合は"Vslit"。出力ファイルの名称に適応する。 -->
+### Instance Variables
+1. **data**: Maneuver data of the playback section with the slit as the minimum unit. Defaults to an empty list.
+1. **width**: Width of the video. Reflects the video information read from `videopath`.
+1. **height**: Height of the video.
+7. **count**: Total number of video frames.
+8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#クラス変数).
+10. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
+11. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
+12. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
+15. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
+1. **out_videopath**: Holds the path of the output video. Initially empty. Called in [animationout](#animationout).
+18. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
+13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
 
-### example
+### Example
 ```python
 your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
 ```
-以前に保存していた軌道データを引き継ぐ場合は以下の例を参照ください。
+To inherit previously saved maneuver data, refer to the example below:
 ```python
 import numpy as np
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1,datapath="path/to/data.npy" )
-#軌道データを確認する
+your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1, datapath="path/to/data.npy")
+# Check the maneuver data
 print(your_maneuver.data.shape)
 ```
-<!-- 
-### append(self,maneuver,auto_zslide=True,zslide=0)
-### prepend(self,maneuver)
-### addFlat(self,frame_nums)
-### addFreeze(self,frame_nums)
-### addSlicePlane(self,frame_nums,xypoint=0.5)
--->
-## `addTrans`メソッド
 
-`addTrans`メソッドは、`wr_array`に新しいトランス軌跡を追加して返すための関数です。このメソッドは、特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
+## `addTrans`
 
-### argument 引数
-- `frame_nums`(int): 追加するフレーム数。
-- `end_line`(float, optional, default: `1`): 変換の終了ライン。
-- `start_line`(float, optional, default: `0`): 変換の開始ライン。
-- `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
-- `zd`(bool, optional, default: `True`): 方向設定。
+The `addTrans` method is a function to add a new trans maneuver trace to `wr_array` and return it. This method performs the transformation considering cyclic angle changes over a specific number of frames.
 
-### Examples of Use 使用例
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+- `end_line`(float, optional, default: `1`): Transformation's end line.
+- `start_line`(float, optional, default: `0`): Transformation's starting line.
+- `speed_round`(bool, optional, default: `True`): Specifies whether the speed is smooth or not.
+- `zd`(bool, optional, default: `True`): Direction setting.
+
+### Usage Example
 ```python
 your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
-<!-- 
-### addKeepSpeedTrans(self,frame_nums,under_xyp,over_xyp=1,rendertype=0)
-### insertKeepSpeedTrans(self,frame_nums,under_xyp=None,over_xyp=1,after_array=[],rendertype=0)
-### addWideKeyframeTrans(self,frame_nums,key_array,wide_scale=3,start_frame=[0,0],speed_round=False)
-### addBlowupTrans(self,frame_nums,deg,speed_round=True,connect_round=1)
--->
-## `addInterpolation`
 
-`interpolation` メソッドは、指定された軌道データをもとにインターポレーションを行い、新たなフレームを生成するためのメソッドです。この関数は、特定のフレーム数にわたり、複雑な変換を加えるためのものです。
+## `addInterpolation` 
 
-### argument 引数
-- `frame_nums`(int): インターポレーションを行うフレーム数。
-- `interporation_direction`(int): インターポレーションの方向。
-- `z_direction`(int): Z方向におけるインターポレーションの方向。
-- `axis_position`(int): 回転やインターポレーションの中心となる位置。
-- `reversal`(int, optional, default: `0`): 動きの反転を制御する。
-- `cycle_degree`(int, optional, default: `90`): 1サイクルあたりの角度。
-- `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
-- `zslide`(int, optional, default: `0`): Z方向のスライド量。
-- `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
-- `rrange`(list of int, optional, default: `[0,1]`): 変換の範囲を指定するリスト。
+The `interpolation` method is based on the specified maneuver data to perform interpolation and to generate new frames. This function is designed to apply complex transformations over a specific number of frames.
 
-### Examples of Use 使用例
+### Parameters
+- `frame_nums`(int): Number of frames for interpolation.
+- `interporation_direction`(int): Direction of interpolation.
+- `z_direction`(int): Direction of interpolation in the Z axis.
+- `axis_position`(int): Central position for rotation and interpolation.
+- `reversal`(int, optional, default: `0`): Controls the reversal of motion.
+- `cycle_degree`(int, optional, default: `90`): Angle per cycle.
+- `extra_degree`(int, optional, default: `0`): Specifies the sectional angle at the initial stage of transformation.
+- `zslide`(int, optional, default: `0`): Amount of slide in the Z direction.
+- `speed_round`(bool, optional, default: `True`): Specifies if the speed is smooth.
+- `rrange`(list of int, optional, default: `[0,1]`): List specifying the range of transformation.
+
+### Usage
 ```python
 your_object.addInterpolation(100, 0, 0, 0,reversal=False)
 ```
@@ -559,25 +477,19 @@ your_object.addInterpolation(100, 0, 1, 1,reversal=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
 
+## `addCycleTrans` Method
 
-<!--
-### rootingA_interporation(self,FRAME_NUMS,loop_num=2,axis_first_p=0)
-### rootingB_interporation(self,FRAME_NUMS,loop_num=1,axis_fix_p=0)
--->
+The `addCycleTrans` method is used to add cyclical transformations (trans) to the data. It performs transformations considering cyclical angle changes over a specific number of frames.
 
-## `addCycleTrans`
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+- `cycle_degree`(int, optional, default: `360`): Angle per cycle.
+- `zscaling`(bool, optional, default: `False`): Whether to enable scaling in the Z axis.
+- `zslide`(int, optional, default: `0`): Initial value of time position.
+- `extra_degree`(int, optional, default: `0`): Specifies the sectional angle at the initial stage of transformation.
+- `speed_round`(bool, optional, default: `True`): Specifies if the speed is smooth.
 
-`addCycleTrans` メソッドは、サイクル的な変換（トランス）をデータに追加するためのものです。特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
-
-### argument 引数
-- `frame_nums`(int): 追加するフレーム数。
-- `cycle_degree`(int, optional, default: `360`): 1サイクルあたりの角度。
-- `zscaling`(bool, optional, default: `False`): Z軸のスケーリングを有効にするかどうか。
-- `zslide`(int, optional, default: `0`): 時間位置の初期値。
-- `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
-- `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
-
-### Examples of Use 使用例
+### Usage
 ```python            
 your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra_degree=5, speed_round=False)
 ```
@@ -585,107 +497,71 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 
 ## `addCustomCycleTrans`
 
-`addCustomCycleTrans` このクラス関数は、`addCycleTrans`での中心軸を自由に動かすことができます。
-`start_center`引数で指定した位置から`end_center`で指定した位置までリニアに変化させます。
+The `addCustomCycleTrans` class function allows you to freely move the central axis in `addCycleTrans`. It linearly changes from the position specified in the `start_center` argument to the position specified in the `end_center` argument.
 
-### argument 引数
-- `frame_nums`(int): 追加するフレーム数。
-- `cycle_degree`(int): 1サイクルあたりの角度。
-- `start_center`(float, optional, default: `1/2`): 開始の中心軸の位置。(0~1)の範囲でスキャン方向の長さに対しての比率として指定する。縦スリットの場合、0は左端、1は右端になる。
-- `end_center`(float, optional, default: `1/2`): 終了の中心軸の位置。
-- `zscaling`(bool, optional, default: `False`): Z軸のスケーリングを有効にするかどうか。
-- `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
-- `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
-- `zslide`(int, optional, default: `0`): 時間位置の初期値。
-- `auto_zslide`(bool, optional, default: `True`): Zスライドの自動調整の有効・無効を切り替えるフラグ。
-- `zscaling_v`(float, optional, default: `0.9`): Zスケーリングの係数。
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+- `cycle_degree`(int): Angle per cycle.
+- `start_center`(float, optional, default: `1/2`): Position of the starting central axis. Specify as a ratio to the scan direction length in the range of (0~1). For vertical slits, 0 is the left end, and 1 is the right end.
+- `end_center`(float, optional, default: `1/2`): Position of the ending central axis.
+- `zscaling`(bool, optional, default: `False`): Whether to enable scaling in the Z axis.
+- `extra_degree`(int, optional, default: `0`): Specifies the sectional angle at the initial stage of transformation.
+- `speed_round`(bool, optional, default: `True`): Specifies if the speed is smooth.
+- `zslide`(int, optional, default: `0`): Initial value of time position.
+- `auto_zslide`(bool, optional, default: `True`): Flag to switch the automatic adjustment of Z slide on/off.
+- `zscaling_v`(float, optional, default: `0.9`): Coefficient of Z scaling.
 
-### Examples of Use 使用例
+### Usage
 ```python
 your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_center=0.7)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
-<!-- ### addWaveTrans(self,frame_nums,cycle_degree,zdepth,flow=1,zslide=0,speed_round=True)
-### addEventHorizonTrans(self,frame_nums,zdepth,z_osc=1,cycle_degree=180,flow=False,zslide=0)
-### applyTimeForward(self,slide_time=None)
-### applyTimeOblique(self,maxgap)
-### applyTimeForwordAutoSlow(self,slide_time:int=1,defaultAddTime:int=100,addTimeEasing:bool=True,easeRatio:float=0.3)
-### applyTimeFlowKeepingExtend(self,frame_nums:int,fade:bool=False)
-### applyTimeLoop(self,slide_time,freq=2,stay_time=0)
-### applyTimeClip(self,trackslit:int,cliptime=None)
-### applyTimeslide(self,startframe:int)
-### applyInOutGapFix(self)
-### applySpaceBlur(self,bl_time)
-### applyTimeBlur(self,bl_time)
-### applyCustomeBlur(self,s_range,e_range,bl_time)
-### addFreeze(self,frame_nums)
-### preExtend(self,addframe:int)
-### addExtend(self,frame_nums:int)
-### zCenterArrange(self)
-### zPointCheck(self)
-### info_setting(self,thread_num=20)
-### maneuver_CSV_out(self,thread_num=None)
-### scd_out(self,thread_num=None,audio_path=None)
-### data_save(self)
-### split_3_npysavereturn(self)
-### maneuver_2dplot(self,thread_num=None,debugmode=False,w_inc=5,h_inc=9,plinewidth=1.0,individual_output=False,palpha=1.0)
-### maneuver_3dplot(self,thread_num=None,zRangeFix=False,outFrame_nums=50,out_fps=10)
--->
+## `transprocess`
+This method performs video rendering.
 
-## `transprocess`メソッド
-このメソッドは映像のレンダリングを行います。
+### Parameters
+- `separate_num` (int, optional, default: `1`): Specifies how many divisions to perform the rendering.
+- `sep_start_num` (int, optional, default: `0`): Specifies from which division to start when rendering in divisions.
+- `sep_end_num` (int or None, optional, default: `None`): Specifies up to which division to render.
+- `out_type` (int, optional, default: `1`): Specifies the output format. `1` is video, `0` is a still image, and `2` is both video and still image.
+- `XY_TransOut` (bool, optional, default: `False`): If True, saves the output video rotated by 90 degrees.
+- `render_mode` (int, doptional, default: `0`): Rendering mode. `0` outputs all frames of the maneuver data integrated. `1` outputs only from `sep_start_num` to `sep_end_num`.
 
-### argument 引数
-- `separate_num` (int, optional, default: `1`): レンダリングを何分割で行うかの指定。
-- `sep_start_num` (int, optional, default: `0`): 分割レンダリング時に、どの分割から開始するかの指定。
-- `sep_end_num` (int or None, optional, default: `None`): 分割レンダリング時に、どの分割まで行うかの指定。
-- `out_type` (int, optional, default: `1`): 出力形式の指定。`1`は映像、`0`は静止画、`2`は映像と静止画両方。
-- `XY_TransOut` (bool, optional, default: `False`): Trueの場合、出力映像を90度回転して保存。
-- `render_mode` (int, doptional, default: `0`): レンダリングモード。`0`は全軌道データのフレームを統合して出力。`1`は`sep_start_num` から `sep_end_num` までの範囲だけを出力。
-
-### Examples of Use 使用例
+### Usage
 ```python
-# インスタンスを作成
+# Create an instance
 your_maneuver = imgtrans.drawManeuver("mov/samplevideo.mp4",sd=1)
 
-#軌道データの書き込み
+# Write maneuver data
 your_maneuver.addTrans(100)
 your_maneuver.applyTimeForward(1)
 
-# レンダリング
+# Rendering
 your_maneuver.transprocess()
 ```
-
-<!-- ## transprocess_typeB(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0) -->
 ## `animationout`
 
 The `animationout` function plots the pixel color of the image on a 3D graph with reference to the output video data and outputs the result as an animation. It allows you to visualize the trajectory of the playback cross section based on spatio-temporal manipulations on the spatio-temporal cube. Unlike 'maveuver_2dplot' and 'maveuver_3dplot', this visualization is more intuitive in its correspondence with the input video data by mapping pixel colors.  
  Therefore, it can only be executed after rendering the video. If there is already video data to be exported, it is necessary to call the information in the instance variable 'out_videopath'.
- 
- `animationout`関数は、出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力します。時空間キューブ上での時空間操作に基づく再生断面の軌道を可視化させます。 'maveuver_2dplot','maveuver_3dplot'とは違いピクセルの色をマッピングすることでより入力の映像データとの対応を直感的に理解しやすいビジュアライズです。  
- そのため、映像のレンダリングを行った後にしか実行できません。もし、既に書き出しの映像データが存在する場合は、インスタンス変数'out_videopath'にて情報を呼び出す必要があります。
  
  ```python
  your_maneuver.out_videopath = "mov/sample.mp4"
  your_maneucer.animationout()
  ```
 
- ### argument 引数
+ ### argument 
 - `outFrame_nums` (`int`, default: `100`): 出力するフレーム数。
 - `drawLineNum` (`int`, default: `250`): 描画するラインの数。
 - `dpi` (`int`, default: `200`): 出力画像のDPI。
 - `out_fps` (`int`, default: `10`): 出力動画のフレームレート。
 
-### Examples of Use 使用例
+### Examples of Use 
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)
 
 ## Contribute
 Contributions to this project are welcome.  
 If you have any questions or feedback, please feel free to contact us at ryu.furusawa(a)gmail.com.  
-
-このプロジェクトへのコントリビュートを歓迎します。  
-質問やフィードバックがあれば、ryu.furusawa(a)gmail.comまでお気軽にお問い合わせください。
 
 ## License 
 This project is licensed under the MIT License, see the LICENSE.txt file for details
