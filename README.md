@@ -21,7 +21,7 @@ A programming tool for manipulating time and space in video data. It's primarily
     - [2D Plot](#2d-plot)
     - [3D Plot](#3d-plot)
   - [5. Rendering](#5-rendering)
-    - [Structure of `data`](#structure-of-data)
+    - [Structure of data](#structure-of-data)
     - [Video Rendering](#video-rendering)
     - [Audio Rendering](#audio-rendering)
         - [4 CSV of Maneuver Data](#4-csv-data-of-maneuver)
@@ -29,7 +29,6 @@ A programming tool for manipulating time and space in video data. It's primarily
         - [Running the scd File](#running-the-scd-file)
           - [1. Audio Settings and Data Loading](#1-audio-settings-and-data-loading)
           - [2. Playing `Synth` and Recording](#2-playing-synth-and-recording)
-
     - [Combining Audio and Video](#combining-audio-and-video)
 - [drawManeuver Class](#drawmaneuver-class)
   - [Class Variables](#class-variables)
@@ -104,12 +103,12 @@ The maneuver data being edited here describes which slit (spatial position, time
 For more details, please refer to the structure of [`data`](#dataの構造).
 
 #### 1. Main Methods to Add Spatiotemporal Movement
-- [`addTrans`](#addtransselfframe_numsend_line1start_line0speed_roundtrue): Simple replacement of spatial and temporal dimensions.
-- [`addBlowupTrans`](#addblowuptransselfframe_numsdegspeed_roundtrueconnect_round1): Inherits addTrans while operating on the scaling of the temporal dimension.
-- [`addInterpolation`](#addinterpolationselfframe_numsinterporation_directionz_directionaxis_positionreversal0cycle_degree90extra_degree0zslide0speed_roundtruerrange01): Transition of spatiotemporal dimensions.
-- [`addCycleTrans`](#addcycletransselfframe_numscycle_degree360zscalingfalsezslide0extra_degree0speed_roundtrue): Rotating the playback section around the center line of the screen.
-- [`addWaveTrans`](#addwavetransselfframe_numscycle_degreezdepthflow1zslide0speed_roundtrue): Creating a playback section using dynamic wave shapes.
-- [`addEventHorizonTrans`](#addeventhorizontransselfframe_numszdepthz_osc1cycle_degree180flowfalsezslide0): The progression speed of time varies between the center and periphery of the screen.
+- [`addTrans`](#addtrans): Simple replacement of spatial and temporal dimensions.
+- [`addBlowupTrans`](#addblowuptrans): Inherits addTrans while operating on the scaling of the temporal dimension.
+- [`addInterpolation`](#addinterpolation): Transition of spatiotemporal dimensions.
+- [`addCycleTrans`](#addcycletrans): Rotating the playback section around the center line of the screen.
+- [`addWaveTrans`](#addwavetrans): Creating a playback section using dynamic wave shapes.
+- [`addEventHorizonTrans`](#addeventhorizontrans): The progression speed of time varies between the center and periphery of the screen.
 
 ![Alt text](images/Maneuver-examples-3dplot.gif)
 
