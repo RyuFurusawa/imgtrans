@@ -1,6 +1,6 @@
 # imgtrans
 
-A programming tool for manipulating time and space in video data. It's primarily a Python library centered around the `DrawManeuver` class.
+A programming tool for manipulating time and space in video data. It's primarily a Python library centered around the `drawManeuver` class.
 
 ## Table of Contents
 
