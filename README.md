@@ -45,9 +45,10 @@ A programming tool for manipulating time and space in video data. It's primarily
 - [License](#license)
 
 ## Project Overview
-By interpreting the time dimension of a video as the depth axis of three dimensions, video data becomes a cube composed of voxels. Here, we'll call this three-dimensional video data a "spatiotemporal object". This spatiotemporal object has color information determined for all spaces, and has plasticity where it can be extracted as an image with color arrangements even when cut from various angles and directions. By controlling the behavior of the cross-section of this spatiotemporal object, a video, organized in a new time and space different from the time and space of the input video, is produced. 
-In other words, this tool allows intervention in the time and spatial dimensions of the entered video, bringing a new perspective on movement from the anamorphic relationship between the output and input videos, and promoting exploration into human perceptions of time and space.
-
+By interpreting the time dimension of the image as depth axis of three dimentions, the image data becomes a cube composed of voxels.  
+This video data cube stores color information over the entire space and has the plasticity to be retrieved as an image with an array of colors, even when cut from various angles and directions.  
+By manipulating the cross-sectional behavior of the video data cube, one can create images ordered in a new time and space, different from the captured time and space.  
+In addition, working with this tool will provide new insights into "movement" as defined by time and space, and will encourage us to think about our perception and awareness of time and space.
 <div style="text-align:center;">
 <img src="images/ost-illustrate20220106_RFS1459.gif" alt="illustrate moving image manipulation by time and space" style="max-width:100%; height:auto;">
 </div><br>
@@ -100,7 +101,7 @@ Class methods can be broadly divided into **1. Functions that add spatiotemporal
 By running these, the maneuver data is stored in the instance variable `data`.  
 Each function internally performs operations on the instance variable `data`, such as adding a new array or multiplying some value to the entire data.
 The maneuver data being edited here describes which slit (spatial position, time position) of the output video corresponds to the input video in terms of coordinate transformation.  
-For more details, please refer to the structure of [`data`](#dataの構造).
+For more details, please refer to the structure of [`data`](#structure-of-data).
 
 #### 1. Main Methods to Add Spatiotemporal Movement
 - [`addTrans`](#addtrans): Simple replacement of spatial and temporal dimensions.
@@ -364,7 +365,7 @@ This class is the main component of the Imgtrans library.
         - **Wavy playback cross-section**
             - [`addWaveTrans`](#addwavetrans): Creates a playback cross-section with a dynamic wave shape for the pixel matrix of time and space. It's also possible to toggle fixing the spatial axis.
             - [`addEventHorizonTrans`](#addeventhorizontrans): No change in spatial area. The progression speed of time changes between the center and periphery of the screen. Cancels the optical flow of video captured by a camera that moves forward and backward.
-- **Time-focused maneuver**
+    - **Time-focused maneuver**
         - [`applyTimeForward`](#applytimeforward): Apply forward time flow (in slide_time units) to the entire array.
         - [`applyTimeOblique`](#applytimeoblique): Apply oblique time effect.
         - [`applyTimeForwordAutoSlow`](#applytimeforwordautoslow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
@@ -377,7 +378,7 @@ This class is the main component of the Imgtrans library.
         - [`applySpaceBlur`](#applyspaceblur): Apply spatial blur.
         - [`applyTimeBlur`](#applytimeblur): Apply temporal blur.
         - [`applyCustomeBlur`](#applycustomeblur): Apply custom range blur.
-    - Other maneuver functions
+    - **Other maneuver functions**
         - [`addFreeze`](#addfreeze): Generate and add frames specified by "frame_nums" to both the time and spatial axes based on the final column's array.
         - [`preExtend`](#preextend): Extend the first frame of the given maneuver array forward.
         - [`addExtend`](#addextend): Extend the final frame of the given maneuver array. Z-rate becomes 0.
@@ -411,7 +412,7 @@ The `__init__` method takes the attributes of the video path, scan direction, da
 1. **width**: Width of the video. Reflects the video information read from `videopath`.
 1. **height**: Height of the video.
 7. **count**: Total number of video frames.
-8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#クラス変数).
+8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#class-variables).
 10. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
 11. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
 12. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
