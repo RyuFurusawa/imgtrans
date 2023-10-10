@@ -526,6 +526,14 @@ class drawManeuver:
             self.data[k,:,1]+=now_point
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(trackslit)+"-"+str(cliptime))
 
+    # スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。2023.10.10added
+    def applyTimebySpace(self,v):
+        print(sys._getframe().f_code.co_name)
+        for k in range(0,int(self.data.shape[0])):#Xは固定でzポイントが飛び飛びから詰まっていく。
+            self.data[k,:,1] += v*(self.data[k,:,0]/self.scan_nums)
+        self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]＋str(v))
+
+
     #軌道配列と入力映像のフレーム数を照あわせて、入力映像の時間的な意味での中心フレームに寄せる。
     def zCenterArrange(self):
         print(sys._getframe().f_code.co_name)
@@ -1602,7 +1610,7 @@ class drawManeuver:
         lnterval = round(runOverTime-runFirstTime,2)
         print("All Done",lnterval,"sec")
         
-    def pretransprocess(self,XY_TransOut=False,render_mode=0):
+    def pretransprocess(self,outnums=100,XY_TransOut=False):
         #self.outfpsはグローバルで定義
         out_type=1
         separate_num=1
@@ -1621,17 +1629,13 @@ class drawManeuver:
             print("z>video_count,error",np.amax(self.data[:,:,-1]),self.count)
             return
         #audioようにfloatで計算していたのをintへ戻す。この方法だと小数点以下は切り捨て
-        dim=int(self.data.shape[0] / 30)
+        dim=int(self.data.shape[0] / outnums)
         beforefps=self.outfps
-        self.outfps=8
+        self.outfps=10
         wr_array =  self.data[::dim].astype(np.int32)
         # self.data=wr_array
         s=0
-        #事前に変数宣言をしておく。
-        #ここでメモリーリークしがち。アクティブモニターをみると、100GBを超えることもある、ディスク容量不足でディスクバッファが使えない場合はエラーで止まる。
-        print("img-variable-declare",int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num))
         for i in range(0,int(wr_array.shape[0])):
-            # print("img-variable-declare",i,psutil.virtual_memory().percent)
             if self.scan_direction%2==1 :
                 exec("img%d =  np.zeros((int(self.height),int(wr_array.shape[1]),3),np.uint8)" % (i))
             else :
@@ -2570,7 +2574,7 @@ class drawManeuver:
         timevalues:読み込む時間軸方向のピクセル数    
         timepoints=書き出す総フレームに対する時間軸のキーフレーム        
     '''
-    def addBlowupTrans(self,frame_nums,deg,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[],zeffect=0):
+    def addBlowupTrans(self,frame_nums,deg,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[]):
         #2021.09.02　New。
         #2022.09.19 プロセスをcycletransと同等に
         """
@@ -2624,7 +2628,7 @@ class drawManeuver:
                 for x in range(0,int(self.width)):#Xは固定でzポイントが飛び飛びから詰まっていく。
                     zp=round(front_point+x*ajstlen)
                     # write_array.append([xp,zp,ajstlen>0])
-                    zadd = (xp  /  self.width)* (self.width*zeffect)
+                    # zadd = (xp  /  self.width)* (self.width*zeffect)
                     write_array.append([xp,zp+zadd])
                     # print(i,t,ajstlen,t*ajstlen,zp,i*(scale_gap/frame_nums))
             else:

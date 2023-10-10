@@ -373,6 +373,7 @@ This class is the main component of the Imgtrans library.
         - [`applyTimeClip`](#applytimeclip): Fix the time flow of specified slits to a specific time.
         - [`applyTimeSlide`](#applytimeslide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
         - [`applyInOutGapFix`](#applyinoutgapfix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
+        - [`applyTimebySpace`](#applytimebyspace):Depending on the spatial position of the slit, the number of frames specified by `v` is shifted in the time direction as the maximum value.
         - [`applySpaceBlur`](#applyspaceblur): Apply spatial blur.
         - [`applyTimeBlur`](#applytimeblur): Apply temporal blur.
         - [`applyCustomeBlur`](#applycustomeblur): Apply custom range blur.

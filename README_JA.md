@@ -376,6 +376,7 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
         - [`applyTimeClip`](#applyTimeClipメソッド): 指定したスリットの時間の流れを指定した時間に固定する。
         - [`applyTimeSlide`](#applyTimeSlideメソッド): 一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
         - [`applyInOutGapFix`](#applyInOutGapFixメソッド): シームレスループ作成のための補助的な関数。最初と最終フレームの差分を計算し、必要に応じてフレームの調整を行う。
+        - [`applyTimebySpace`](#applytimebyspace):スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。
         - [`applySpaceBlur`](#applySpaceBlurメソッド): 空間的なぼかしを適用
         - [`applyTimeBlur`](#applyTimeBlurメソッド): 時間的なぼかしを適用
         - [`applyCustomeBlur`](#applyCustomeBlurメソッド): カスタム範囲のブラーを適用
