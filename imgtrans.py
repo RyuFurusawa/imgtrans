@@ -971,9 +971,11 @@ class drawManeuver:
 
     def data_save(self):
         np.save(self.ORG_NAME+"_"+self.out_name_attr+'_trans-raw-array.npy',self.data)
-        
+
+
+
+
     # 映像のレンダリング
-    # 映像のレンダリング 2023.10/5 added
     def transprocess(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0):
         #self.outfpsはグローバルで定義
         if sep_end_num == None:sep_end_num = separate_num
@@ -1599,6 +1601,141 @@ class drawManeuver:
         runOverTime = time.time()
         lnterval = round(runOverTime-runFirstTime,2)
         print("All Done",lnterval,"sec")
+        
+    def pretransprocess(self,XY_TransOut=False,render_mode=0):
+        #self.outfpsはグローバルで定義
+        out_type=1
+        separate_num=1
+        sep_start_num=0
+        sep_end_num=1
+        runFirstTime = time.time()
+        XY_Name = "Y" if self.scan_direction%2 == 0 else "X"
+        videostr = self.ORG_NAME+"_"+self.out_name_attr 
+        if self.embedHistory_intoName == False :
+            videostr = self.ORG_NAME+"_process"+str(self.log)
+        rotate_direction = False
+        if np.amin(self.data[:,:,-1])<0:
+            print("z<0,error")
+            return
+        if np.amax(self.data[:,:,-1])>self.count:
+            print("z>video_count,error",np.amax(self.data[:,:,-1]),self.count)
+            return
+        #audioようにfloatで計算していたのをintへ戻す。この方法だと小数点以下は切り捨て
+        dim=int(self.data.shape[0] / 30)
+        beforefps=self.outfps
+        self.outfps=8
+        wr_array =  self.data[::dim].astype(np.int32)
+        # self.data=wr_array
+        s=0
+        #事前に変数宣言をしておく。
+        #ここでメモリーリークしがち。アクティブモニターをみると、100GBを超えることもある、ディスク容量不足でディスクバッファが使えない場合はエラーで止まる。
+        print("img-variable-declare",int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num))
+        for i in range(0,int(wr_array.shape[0])):
+            # print("img-variable-declare",i,psutil.virtual_memory().percent)
+            if self.scan_direction%2==1 :
+                exec("img%d =  np.zeros((int(self.height),int(wr_array.shape[1]),3),np.uint8)" % (i))
+            else :
+                exec("img%d =  np.zeros((int(wr_array.shape[1]),int(self.width),3),np.uint8)" % (i))
+        #ビデオの設定
+        if self.sepVideoOut == 1 :
+            print("video-preference")
+            fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
+            if self.scan_direction%2==1 :
+                video = cv2.VideoWriter(videostr +'_pre.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.height)),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.height),int(wr_array.shape[1])),1)
+            else :
+                video = cv2.VideoWriter(videostr +'_pre.mp4', fourcc, self.outfps,(int(self.width),int(wr_array.shape[1])),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.width)),1)
+        interval_first = None
+        block_num = 0
+        print("minz=",np.amin(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1]))
+        print("maxz",np.amax(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1]))
+        minz = np.amin(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1])
+        maxz = np.amax(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1])
+        totalnum=maxz-minz
+        totalslits=wr_array.shape[0]/separate_num*wr_array.shape[1]
+        slitscounter=0
+        if totalnum == 0 : totalnum=1
+        progresscale=self.progressbarsize/totalnum
+        progressAllScale=self.progressbarsize/(round(self.count))
+        writingTotalNum=int(wr_array.shape[0]/separate_num)
+        writingScale = self.progressbarsize/writingTotalNum
+        if minz < 0 :
+            print("z<0,error")
+            return
+        num = minz
+        print("count",self.count)
+        print("writingTotalNum",writingTotalNum)
+        print("num=",num)
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, num)
+        sstime = time.time()
+        while(self.cap.isOpened()):
+            ret, frame = self.cap.read()
+            reedfull_bool = num < (maxz+1)
+            if ret == True and reedfull_bool :
+                stime = time.time()
+                if (num > minz or num == minz):
+                    if self.scan_direction%2 == 0 :
+                        for i in range(int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num)):
+                            wr =np.array(wr_array[i])
+                            indices = np.where(wr[:, 1] == num)
+                            for p in indices[0]:
+                                exec("img%d[p,:] = frame[wr[p,0],:]" % (i))
+                            slitscounter += len(indices[0])
+                    else :
+                        for i in range(int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num)):
+                            wr =np.array(wr_array[i])
+                            indices = np.where(wr[:, 1] == num)
+                            for p in indices[0]:
+                                exec("img%d[:,p] = frame[:,wr[p,0]]" % (i))
+                            slitscounter += len(indices[0])
+                num += 1
+                etime = time.time()
+                Interval = etime - stime
+                if interval_first == None :
+                    interval_first = Interval
+                elif Interval < interval_first :
+                    interval_first=Interval
+                #progressbar
+                bar= '■'*int((num-minz)*progresscale) + "."*int((totalnum-(num-minz))*progresscale)
+                print(f"\r\033[K[\033[33m{bar}\033[39m] frame{(num-minz)/totalnum*100:.02f}%({minz}>{num}>{maxz}) Slits{slitscounter/totalslits*100:.02f}%({slitscounter}/{int(totalslits)}) : {round(Interval,2)}({round(interval_first,2)})sec/f",end="")
+            else:
+                print("\r")
+                lbstime = time.time()
+                Interval=lbstime-sstime
+                if self.sepVideoOut == 1 or separate_num == 1:
+                    print("video-preference",round(Interval,2))
+                    fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
+                    self.out_videopath=videostr +'.mp4'
+                    if self.scan_direction%2 == 1 :
+                        video = cv2.VideoWriter(self.out_videopath, fourcc, self.outfps,(int(wr_array.shape[1]),int(self.height)),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'.mp4', fourcc, self.outfps,(int(self.height),int(wr_array.shape[1])),1)
+                    else :
+                        video = cv2.VideoWriter(self.out_videopath, fourcc, self.outfps,(int(self.width),int(wr_array.shape[1])),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.width)),1)
+                else : print("file Writing",round(Interval,2))
+                for i in range(int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num)):
+                    wstime = time.time()
+                    if XY_TransOut :
+                        if rotate_direction: exec('video.write(img%d.transpose(1,0,2)[:,::-1])' %(i))
+                        else : exec('video.write(img%d.transpose(1,0,2)[::-1])' %(i))
+                    else: exec('video.write(img%d)' %(i))
+                    exec("del img%d"%(i))
+                    gc.collect()
+                    wetime = time.time()
+                    knterval = round(wetime-wstime,2)
+                    ci=i-int(s*wr_array.shape[0]/separate_num)
+                    bar= '■'*int(ci*writingScale)+ "."*int((writingTotalNum-ci)*writingScale)
+                    if self.sepVideoOut == 1 or separate_num == 1:
+                        print(f"\r\033[K[\033[31m{bar}\033[39m] {ci/writingTotalNum*100:.02f}% ({knterval:.02f})sec/f",end="")
+                    else :
+                        print(f"\r\033[K[\033[32m{bar}\033[39m] {ci/writingTotalNum*100:.02f}% ({knterval:.02f})sec/f",end="")
+                if self.sepVideoOut == 1  or separate_num == 1 : video.release()
+                break
+        print("done:",s+1,"/",separate_num)
+        print("\r")
+        gc.collect()
+        self.cap.release()
+        runOverTime = time.time()
+        lnterval = round(runOverTime-runFirstTime,2)
+        print("All Done",lnterval,"sec")
+        self.outfps=beforefps
 
     # レンダリング済みの映像ファイルと、軌道配列から、軌道の3D可視化アニメーションを作成する。
     def animationout(self,outFrame_nums=100,drawLineNum=250,dpi=200,out_fps=10):#outFrame_nums=50,out_fps=10

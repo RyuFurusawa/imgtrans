@@ -113,13 +113,12 @@ For more details, please refer to the structure of [`data`](#dataの構造).
 ![Alt text](images/Maneuver-examples-3dplot.gif)
 
 #### 2. Main Methods Adapting the Flow of Time
-- [`applyTimeForward`](#applytimeforwardselfslide_timenone): Provides forward flow of time to the entire array.
-- [`applyTimeOblique`](#applytimeobliqueselfmaxgap): Shifts time slightly for each slit.
-- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): Playback starts at rate 1, slows down, and then returns to rate 1.
-- [`applyTimeLoop`](#applytimeloopselfslide_timefreq2stay_time0): Imparts a seamless loop structure.
-- [`applyTimeClip`](#applytimeclipselftrackslitintcliptimenone): Fixes the flow of time for a specified slit to a specified time.
-- [`applyTimeBlur`](#applytimeblurselfbl_time): Applies a temporal blur.
-
+- [`applyTimeForward`](#applytimeforward): Provides forward flow of time to the entire array.
+- [`applyTimeOblique`](#applytimeoblique): Shifts time slightly for each slit.
+- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslow): Playback starts at rate 1, slows down, and then returns to rate 1.
+- [`applyTimeLoop`](#applytimeloop): Imparts a seamless loop structure.
+- [`applyTimeClip`](#applytimeclip): Fixes the flow of time for a specified slit to a specified time.
+- [`applyTimeBlur`](#applytimebluR): Applies a temporal blur.
 ![Alt text](images/timeManeuver-examples-3dplot.gif)
 
 #### Examples of Combinations
@@ -347,54 +346,54 @@ This class is the main component of the Imgtrans library.
 
 - **Classes related to maneuver design**
     - **Functions that add space-time integrated motion**
-        - [`addFlat`](#addFlat): Adds a flat array.
-        - [`addFreeze`](#addFreeze): Creates and adds an array of the final row for both the time and space axes for the number of frames specified by "frame_nums".
-        - [`addSlicePlane`](#addSlicePlane): Adds a cross-sectional frame sliced along the time axis at the specified spatial position for the specified number of frames.
+        - [`addFlat`](#addflat): Adds a flat array.
+        - [`addFreeze`](#addfreeze): Creates and adds an array of the final row for both the time and space axes for the number of frames specified by "frame_nums".
+        - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis at the specified spatial position for the specified number of frames.
         - **Transposition of space and time dimensions**
-            - [`addTrans`](#addTrans): Simple transposition of space and time dimensions. For vertical slits, X-axis and T-axis are transposed. For horizontal slits, Y-axis and T-axis are transposed.
-            - [`addKeepSpeedTrans`](#addKeepSpeedTrans): Creates and adds a new frame while maintaining the speed of existing frame data. Repeated until a specific spatial area is reached.
-            - [`insertKeepSpeedTrans`](#insertKeepSpeedTrans): Advanced version of `addKeepSpeedTrans`. Smoothly interpolates between the arrays received by `after_array` for `self.data`.
-            - [`addWideKeyframeTrans`](#addWideKeyframeTrans): Advanced version of `addKeyframeTrans`. Used when outputting at a size larger than the input image, like `midtide`.
-            - [`addBlowupTrans`](#addBlowupTrans): A method to control blowup motion in more detail with keyframes. This method attempts to gradually change the resolution of the time axis, and basically has a movement similar to XYT Trans. The key parameters for detailed control of the time axis keyframes are `timevalues` and `timepoints`.
+            - [`addTrans`](#addtrans): Simple transposition of space and time dimensions. For vertical slits, X-axis and T-axis are transposed. For horizontal slits, Y-axis and T-axis are transposed.
+            - [`addKeepSpeedTrans`](#addkeepspeedtrans): Creates and adds a new frame while maintaining the speed of existing frame data. Repeated until a specific spatial area is reached.
+            - [`insertKeepSpeedTrans`](#insertkeepspeedtrans): Advanced version of `addKeepSpeedTrans`. Smoothly interpolates between the arrays received by `after_array` for `self.data`.
+            - [`addWideKeyframeTrans`](#addwidekeyframetrans): Advanced version of `addKeyframeTrans`. Used when outputting at a size larger than the input image, like `midtide`.
+            - [`addBlowupTrans`](#addblowuptrans): A method to control blowup motion in more detail with keyframes. This method attempts to gradually change the resolution of the time axis, and basically has a movement similar to XYT Trans. The key parameters for detailed control of the time axis keyframes are `timevalues` and `timepoints`.
        - **Transition of space-time dimensions**
-            - [`addInterpolation`](#addInterpolation): Interpolates based on the given parameters and adds the results to the data.
-            - [`rootingA_interporation`](#rootingA_interporation): Combines multiple addInterpolations. Zigzag motion.
-            - [`rootingB_interporation`](#rootingB_interporation): Combines multiple addInterpolations. Motion like dominos rolling down a slope.
-            - [`addCycleTrans`](#addCycleTrans): Transitionally substitutes XYT. Rotates the playback cross-section around the centerline of the screen.
-            - [`addCustomCycleTrans`](#addCustomCycleTrans): Able to move the center axis of rotation in addCycleTrans.
+            - [`addInterpolation`](#addinterpolation): Interpolates based on the given parameters and adds the results to the data.
+            - [`rootingA_interporation`](#rootinga_interporation): Combines multiple addInterpolations. Zigzag motion.
+            - [`rootingB_interporation`](#rootingb_interporation): Combines multiple addInterpolations. Motion like dominos rolling down a slope.
+            - [`addCycleTrans`](#addcycletrans): Transitionally substitutes XYT. Rotates the playback cross-section around the centerline of the screen.
+            - [`addCustomCycleTrans`](#addcustomcycletrans): Able to move the center axis of rotation in addCycleTrans.
         - **Wavy playback cross-section**
-            - [`addWaveTrans`](#addWaveTrans): Creates a playback cross-section with a dynamic wave shape for the pixel matrix of time and space. It's also possible to toggle fixing the spatial axis.
-            - [`addEventHorizonTrans`](#addEventHorizonTrans): No change in spatial area. The progression speed of time changes between the center and periphery of the screen. Cancels the optical flow of video captured by a camera that moves forward and backward.
+            - [`addWaveTrans`](#addwavetrans): Creates a playback cross-section with a dynamic wave shape for the pixel matrix of time and space. It's also possible to toggle fixing the spatial axis.
+            - [`addEventHorizonTrans`](#addeventhorizontrans): No change in spatial area. The progression speed of time changes between the center and periphery of the screen. Cancels the optical flow of video captured by a camera that moves forward and backward.
 - **Time-focused maneuver**
-        - [`applyTimeForward`](#applyTimeForward): Apply forward time flow (in slide_time units) to the entire array.
-        - [`applyTimeOblique`](#applyTimeOblique): Apply oblique time effect.
-        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
-        - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
-        - [`applyTimeLoop`](#applyTimeLoop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
-        - [`applyTimeClip`](#applyTimeClip): Fix the time flow of specified slits to a specific time.
-        - [`applyTimeSlide`](#applyTimeSlide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
-        - [`applyInOutGapFix`](#applyInOutGapFix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
-        - [`applySpaceBlur`](#applySpaceBlur): Apply spatial blur.
-        - [`applyTimeBlur`](#applyTimeBlur): Apply temporal blur.
-        - [`applyCustomeBlur`](#applyCustomeBlur): Apply custom range blur.
+        - [`applyTimeForward`](#applytimeforward): Apply forward time flow (in slide_time units) to the entire array.
+        - [`applyTimeOblique`](#applytimeoblique): Apply oblique time effect.
+        - [`applyTimeForwordAutoSlow`](#applytimeforwordautoslow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
+        - [`applyTimeFlowKeepingExtend`](#applytimeflowkeepingextend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
+        - [`applyTimeLoop`](#applytimeloop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
+        - [`applyTimeClip`](#applytimeclip): Fix the time flow of specified slits to a specific time.
+        - [`applyTimeSlide`](#applytimeslide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
+        - [`applyInOutGapFix`](#applyinoutgapfix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
+        - [`applySpaceBlur`](#applyspaceblur): Apply spatial blur.
+        - [`applyTimeBlur`](#applytimeblur): Apply temporal blur.
+        - [`applyCustomeBlur`](#applycustomeblur): Apply custom range blur.
     - Other maneuver functions
-        - [`addFreeze`](#addFreeze): Generate and add frames specified by "frame_nums" to both the time and spatial axes based on the final column's array.
-        - [`preExtend`](#preExtend): Extend the first frame of the given maneuver array forward.
-        - [`addExtend`](#addExtend): Extend the final frame of the given maneuver array. Z-rate becomes 0.
-        - [`zCenterArrange`](#zCenterArrange): Match the number of frames in the maneuver array with the input video's temporal center.
+        - [`addFreeze`](#addfreeze): Generate and add frames specified by "frame_nums" to both the time and spatial axes based on the final column's array.
+        - [`preExtend`](#preextend): Extend the first frame of the given maneuver array forward.
+        - [`addExtend`](#addextend): Extend the final frame of the given maneuver array. Z-rate becomes 0.
+        - [`zCenterArrange`](#zcenterarrange): Match the number of frames in the maneuver array with the input video's temporal center.
 - **Methods for maneuver data output**
-    - [`dataCheck`](#dataCheck): Output information about `data` to the console.
+    - [`dataCheck`](#datacheck): Output information about `data` to the console.
     - [`info_setting`](#info_setting): Configure data based on the number of threads, calculate playback rates and pans.
-    - [`maneuver_CSV_out`](#maneuver_CSV_out): Output maneuver array data to a CSV file for visualization in external software (e.g., Excel).
+    - [`maneuver_CSV_out`](#maneuver_csv_out): Output maneuver array data to a CSV file for visualization in external software (e.g., Excel).
     - [`scd_out`](#scd_out): Output SuperCollider sound processing code to load and save related data in CSV.
     - [`data_save`](#data_save): Save maneuver data as a numpy file.
-    - [`split_3_npysavereturn`](#split_3_npysavereturn): Used when the width of the out image of the maneuver data is three times the input. It splits and saves as Left, center, and Right NPY files and returns an array with the paths of the three split files.
 - **Methods for maneuver visualization file output**
     - [`maneuver_2dplot`](#maneuver_2dplot): Create a 2D plot and save related data as an image.
     - [`maneuver_3dplot`](#maneuver_3dplot): Generate a 3D plot and save images or videos.
 - **Methods for video rendering**
     - [`transprocess`](#transprocess): Transprocess the video. This method handles video rendering, separate rendering, and other options.
-    - [`transprocess_typeB`](#transprocess_typeB): Method for video rendering. Divides the input time dimension instead of the output time dimension for separate processing. Use this method when there are maneuvers that widen the time axis direction significantly for faster rendering.
+    - [`transprocess_typeB`](#transprocess_typeb): Method for video rendering. Divides the input time dimension instead of the output time dimension for separate processing. Use this method when there are maneuvers that widen the time axis direction significantly for faster rendering.
+    - [`pretransprocess`](#pretransprocess): Video rendering at high speed by thinning out the number of frames. It is for preview purposes only.
     - [`animationout`](#animationout): Reference the rendered video data, plot pixel colors from images onto a 3D graph, and output the result as an animation. Can only be executed after video rendering.
 
 ## `__init__`
