@@ -155,15 +155,18 @@ your_maneuver.data=np.read("path/to/data.npy" )
 In either case, the loaded video data must be within a coordinate range defined by the size and frame count of the video. For example, if the input video has a resolution of Full HD (1920x1080), and the reference vertical slit's horizontal position is 2000, an error will occur.
 
 ### 4. Visualization
-This feature visually represents the instance variable `data` to make it easier to understand. 
-You can visualize the data in both 2D and 3D plots.
-In the 3D graph, you can intuitively grasp the overall movement of the maneuver. On the other hand, the details of the passage of time can be understood more clearly by looking at the 2D graph. By combining these two methods, you can design fine details of time movement, such as time going backward on the left side of the screen and forward on the right. 
-Visualization image data is saved in an output directory created in the same path as the input video.
+This function provides a visual representation of the instance variable `data` for easier understanding.
+The `data` is  described the movement of slits for the resolution of the output video. For example, the number of vertical slits at 4k resolution is 3840, but in the graph it is reduced to 20 for better clarity.
+The data can be visualized in two ways: a 2D plot and a 3D plot.  
+The 3D graph provides an intuitive view of the overall movement of the trajectory. On the other hand, the details of time flow can be more clearly understood by looking at a 2D graph.  
+By combining these two methods, it is possible to design detailed time movements, for example, time moves backward on the left side of the screen and time moves forward on the right side.  
+The image data of the visualization is stored in an export directory generated on the same path as the input video.
 
 #### Slit Color
-It is possible to design behavior where the spatial direction of the video is inverted. To explicitly indicate the direction of such spatial dimensions, the visualization's slit rendering is distinguished by a green-red gradient. 
-1. For vertical slits, green corresponds to the left edge, and red to the right output position.
-1. For horizontal slits, green corresponds to the top edge, and red to the bottom output position.
+In some cases, the spatial direction of the video image may be inverted, and the slits in the visualization are drawn using a green-red gradient to clearly indicate the direction of such spatial dimension.
+1. For vertical slits, green corresponds to the leftmost (0px) and red to the rightmost (3839px for 4k) output position.
+1. In case of horizontal slit, green corresponds to the top (0px) and red corresponds to the bottom (2159px for 4k).
+! [slit-direction illustration](images/slit-direction.png)
 
 #### 2D Plot
 The 2D maneuver graph is output sequentially every time a maneuver design operation is performed.

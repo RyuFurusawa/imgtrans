@@ -530,8 +530,9 @@ class drawManeuver:
     def applyTimebySpace(self,v):
         print(sys._getframe().f_code.co_name)
         for k in range(0,int(self.data.shape[0])):#Xは固定でzポイントが飛び飛びから詰まっていく。
-            self.data[k,:,1] += v*(self.data[k,:,0]/self.scan_nums)
-        self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]＋str(v))
+            # self.data[k,:,1] += v*(self.data[k,:,0]/self.scan_nums)
+            self.data[k,:,1] =self.data[k,:,1] + v*(self.data[k,:,0]/self.scan_nums)
+        self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(v))
 
 
     #軌道配列と入力映像のフレーム数を照あわせて、入力映像の時間的な意味での中心フレームに寄せる。
@@ -2629,7 +2630,7 @@ class drawManeuver:
                     zp=round(front_point+x*ajstlen)
                     # write_array.append([xp,zp,ajstlen>0])
                     # zadd = (xp  /  self.width)* (self.width*zeffect)
-                    write_array.append([xp,zp+zadd])
+                    write_array.append([xp,zp])
                     # print(i,t,ajstlen,t*ajstlen,zp,i*(scale_gap/frame_nums))
             else:
                 yp = int((self.height-1)-(zcos*(self.height-1)/2+(self.height-1)/2))
