@@ -554,10 +554,10 @@ The `animationout` function plots the pixel color of the image on a 3D graph wit
  ```
 
  ### argument 
-- `outFrame_nums` (`int`, default: `100`): 出力するフレーム数。
-- `drawLineNum` (`int`, default: `250`): 描画するラインの数。
-- `dpi` (`int`, default: `200`): 出力画像のDPI。
-- `out_fps` (`int`, default: `10`): 出力動画のフレームレート。
+- `outFrame_nums` (`int`, default: `100`): Number of frames to output.
+- `drawLineNum` (`int`, default: `250`): Number of lines to draw.(resolution)
+- `dpi` (`int`, default: `200`):  DPI of the output image.
+- `out_fps` (`int`, default: `10`): Output Video Frame Rate.
 
 ### Examples of Use 
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)

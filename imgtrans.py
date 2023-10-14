@@ -2575,7 +2575,7 @@ class drawManeuver:
         timevalues:読み込む時間軸方向のピクセル数    
         timepoints=書き出す総フレームに対する時間軸のキーフレーム        
     '''
-    def addBlowupTrans(self,frame_nums,deg,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[]):
+    def addBlowupTrans(self,frame_nums,deg=360,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[]):
         #2021.09.02　New。
         #2022.09.19 プロセスをcycletransと同等に
         """

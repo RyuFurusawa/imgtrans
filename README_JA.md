@@ -470,6 +470,28 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
 
+## `addBlowupTrans`メソッド
+
+`addBlowupTrans`メソッドは、キーフレームを使用して"blowup"の動きを制御するためのメソッドです。提供されたキーフレームを利用して、定義されたフレーム間で特定のモーションパターンを生成します。
+
+### 引数
+- `frame_nums`(int): 追加するフレーム数。
+- `deg`(int, optional, default:360): スキャン方向の動きの設定`360`で往復する。`180`で片道
+- `speed_round`(bool, optional, default: `True`): スキャン方向の推移が滑らかかどうかを指定。
+- `connect_round`(int, optional, default: `1`): キーフレーム間の動きを滑らかにするかどうか。
+- `timevalues`(list, optional): キーフレームの値のリスト。時間方向のレンジをフレーム数で指定する。
+- `timepoints`(list, optional):`frame_nums`に対するキーフレームの時間リスト。0~1の比で指定する。
+- `timecenter`(list, optional):キーフレームの時間方向のレンジ推移する際の中心点のリスト。提供されていない場合、各キーフレームに対してデフォルトで0.5となります。
+
+### 使用例
+```python
+your_object.addBlowupTrans(frame_nums=100, deg=45, speed_round=True, connect_round=1,timevalues=[your_object.count,your_object.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
+```
+
+![Alt text](images/sample_2023_0618_Vslit+addBlowupTrans_3dPlot.gif)
+![Alt text](images/sample_2023_0618_Hslit+addBlowupTrans_3dPlot.gif)
+
+
 ## `addInterpolation`メソッド
 
 `interpolation` メソッドは、指定された軌道データをもとにインターポレーションを行い、新たなフレームを生成するためのメソッドです。この関数は、特定のフレーム数にわたり、複雑な変換を加えるためのものです。
