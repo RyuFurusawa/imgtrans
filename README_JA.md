@@ -34,14 +34,17 @@ drawManeuverクラスをメインとしたpythonライブラリです。
     - [音声と映像の結合](#音声と映像の結合)
 - [drawManeuver クラス](#drawmaneuver-クラス)
   - [クラス変数](#クラス変数)
-  - [インスタンス変数](#インスタンス変数)
+  - [初期化](#初期化)
   - [全クラスメソッドのリスト](#全クラスメソッドのリスト)
-- [addCycleTransメソッド](#addcycletransメソッド)
-- [addcustomCycleTransメソッド](#addcustomcycletransメソッド)
-- [transprocessメソッド](#transprocessメソッド)
-- [animationoutメソッド](#animationoutメソッド)
-- [コントリビュート](#コントリビュート)
-- [ライセンス](#ライセンス)
+    - [addTrans](#addtrans)
+    - [addblowuptrans](#addblowuptrans)
+    - [addInterpolation](#addinterpolation)
+    - [addCycleTrans](#addcycletrans)
+    - [addcustomCycleTrans](#addcustomcycletrans)
+    - [transprocess](#transprocess)
+    - [animationout](#animationout)
+    - [コントリビュート](#コントリビュート)
+    - [ライセンス](#ライセンス)
 
 ## プロジェクトの概要
 映像の時間次元を三次元の奥行き軸として解釈することにより、映像データはボクセルで構成されるキューブとなります。  
@@ -344,76 +347,16 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 <!-- - `progressbarsize`: プログレスバーサイズ（デフォルトは 50） -->
 <!-- - `sepVideoOut`: セパレート出力設定 -->
 
-### 全クラスメソッドのリスト:
-- [`__init__`](#__init__メソッド): ビデオパスを受け取り初期化する。
-- [`append`](#appendメソッド): 別で作成していた軌道データをインスタンス変数としてもつ軌道データの後ろに追加する。
-- [`prepend`](#prependメソッド): 別で作成していた軌道データを、インスタンス変数としてもつ軌道データの先頭にmaneuverを追加する。
-- 軌道デザインに関わるクラスメソッド
-    - 時空間統合的な動きを加える関数
-        - [`addFlat`](#addFlatメソッド): フラットな配列を追加。
-        - [`addFreeze`](#addFreezeメソッド): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
-        - [`addSlicePlane`](#addSlicePlaneメソッド): 指定した空間位置で、時間軸方向に沿って切り出した断面フレームを指定したフレーム数追加。
-        - Transposition 空間次元と時間次元の置き換え
-            - [`addTrans`](#addTransメソッド): 空間次元と時間次元のシンプルな置き換え。縦スリットの場合はX軸とT軸が置換。横スリットの場合はY軸とT軸が置換。
-            - [`addKeepSpeedTrans`](#addKeepSpeedTransメソッド): 既存のフレームデータの速度を維持した状態で、新しいフレームを生成し追加する。特定の空間領域に達するまで繰り返されます。
-            - [`insertKeepSpeedTrans`](#insertKeepSpeedTransメソッド): `addKeepSpeedTrans`の発展版で、`self.data`に対して、`after_array`で受け取った配列の間を滑らかに補う。
-            - [`addWideKeyframeTrans`](#addWideKeyframeTransメソッド): `addKeyframeTrans`の発展版。`midtide`のように、インプット画像よりもサイズを大きくして出力させる場合に使用する。
-            - [`addBlowupTrans`](#addBlowupTransメソッド): blowupの動きをキーフレームにより詳細に制御するメソッド。このメソッドは、時間軸の解像度を徐々に変化させる試みがなされており、基本的にはXYT Transと同様の動きを持っています。時間軸のキーフレームに関する詳細な制御を行うためのキーパラメータは、`timevalues`と`timepoints`です。
-       - 時空間次元の遷移
-            - [`addInterpolation`](#addInterpolationメソッド): 与えられたパラメータをもとに補間を行い、結果をデータに追加する。
-            - [`rootingA_interporation`](#rootingA_interporationメソッド): 複数のaddInterpolationを組み合わせる。ジグザグとした動き。
-            - [`rootingB_interporation`](#rootingB_interporationメソッド): 複数のaddInterpolationを組み合わせる。ドミノが坂道を転がっていくような動き。
-            - [`addCycleTrans`](#addCycleTransメソッド): XYTの置換を補完的に遷移させる。画面の中心線を軸に、再生断面を回転させていく。
-            - [`addCustomCycleTrans`](#addCustomCycleTransメソッド): addCycleTransの回転の中心軸を動かすことができる。
-        - 波打つ再生断面
-            - [`addWaveTrans`](#addWaveTransメソッド): 時間と空間のピクセルのマトリクスに対して、動的な波の形状による再生断面を作成。空間軸を固定するかの切り替えも可能。
-            - [`addEventHorizonTrans`](#addEventHorizonTransメソッド): 空間領域は変更なし。画面の中心と周辺で時間の進行速度が変わる。前進、後退するカメラによりキャプチャされる映像のオプティカルフローをキャンセルする。
+### 初期化
+初期化は、ビデオのパス、スキャン方向、データ、およびフォルダ名の属性を引数として受け取る。このメソッドは、下記のインスタンス変数を初期化し、ビデオパスと同じレベルに出力用のディレクトリを作成し、そのディレクトリに移動する。最終的に出力されるあらゆるファイルはこのディレクトリ内に保存されます。
 
-    - 時間に特化した軌道操作
-        - [`applyTimeForward`](#applyTimeForwardメソッド): 配列全体に時間の順方向の流れ（単位はslide_time）を付与
-        - [`applyTimeOblique`](#applyTimeObliqueメソッド): 時間の斜め効果を適用
-        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlowメソッド): 基本、現在がスロー再生状態の場合に使用する。イントロ、アウトロに通常の再生速度の映像を加え、その間をイーズ処理することで滑らかに接続させる。
-        - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtendメソッド): 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。`fade`引数をTrueでスピード０に落ち着かせる。
-        - [`applyTimeLoop`](#applyTimeLoopメソッド): 与えた軌道配列全体の時間を前半、順方向、後半、逆転して、最後にまた順方向へながれ、最初と終わりの時間差がない。そのままループ再生すればシームレスなループが作られる。デフォルト周波数２hzでしか現在対応できていない。
-        - [`applyTimeClip`](#applyTimeClipメソッド): 指定したスリットの時間の流れを指定した時間に固定する。
-        - [`applyTimeSlide`](#applyTimeSlideメソッド): 一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
-        - [`applyInOutGapFix`](#applyInOutGapFixメソッド): シームレスループ作成のための補助的な関数。最初と最終フレームの差分を計算し、必要に応じてフレームの調整を行う。
-        - [`applyTimebySpace`](#applytimebyspace):スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。
-        - [`applySpaceBlur`](#applySpaceBlurメソッド): 空間的なぼかしを適用
-        - [`applyTimeBlur`](#applyTimeBlurメソッド): 時間的なぼかしを適用
-        - [`applyCustomeBlur`](#applyCustomeBlurメソッド): カスタム範囲のブラーを適用
-    - その他の軌道操作
-        - [`addFreeze`](#addFreezeメソッド): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
-        - [`preExtend`](#preExtendメソッド): 与えた軌道配列の１フレーム目を手前に延長させる。
-        - [`addExtend`](#addExtendメソッド): 与えた軌道配列の最終フレームを延長させる。Zのレートは0になる。
-        - [`zCenterArrange`](#zCenterArrangeメソッド): 軌道配列と入力映像のフレーム数を照らし合わせ、入力映像の時間的な意味での中心
-
-- マニューバーの情報出力に関するメソッド
-    - [`dataCheck`](#dataCheckメソッド):`data`の情報をコンソールに出力する。
-    - [`info_setting`](#info_settingメソッド): データをスレッド数に応じて設定し、再生レートやパンを計算します。
-    - [`maneuver_CSV_out`](#maneuver_CSV_outメソッド): CSVファイルに軌道配列データを出力する。軌道の可視化を外部のソフトウェア（エクセルなど）にて作成する場合に使用する。
-    - [`scd_out`](#scd_outメソッド): supercolliderに読み込ませるサウンドプロセスコードを出力し、関連するデータをCSVで保存します。
-    - [`data_save`](#data_saveメソッド): 軌道データをnumpyのファイルとして保存します。
-    - [`split_3_npysavereturn`](#split_3_npysavereturnメソッド): 軌道データのアウトイメージの横幅が入力の３倍サイズを指定した場合に使用。Left, center, Rightとして3分割して保存。3分割されたNPYファイルのパスを配列で返す。
-- マニューバーの可視化ファイルの出力に関するメソッド
-    - [`maneuver_2dplot`](#maneuver_2dplotメソッド): 2Dプロットを作成して、それに関連するデータを画像として保存します。
-    - [`maneuver_3dplot`](#maneuver_3dplotメソッド): 3Dプロットを生成し、その画像や動画を保存するメソッドです。
-- 映像renderingに関するメソッド
-    - [`transprocess`](#transprocessメソッド): 映像をトランスプロセスします。このメソッドは映像のレンダリングを行い、セパレートレンダリングや他のオプションをサポートしています。
-    - [`transprocess_typeB`](#transprocess_typeBメソッド): 映像のレンダリングを行うメソッド。セパレートプロセスをアウトプットの時間次元ではなく、インプットの時間次元を分割させて処理します。時間軸方向に極端に幅を広くとるようなマニューバーが組み込まれている場合はこのメソッドを使うことで、レンダリング速度が上がります。
-    - [`pretransprocess`](#pretransprocess): フレーム数を間引いて、高速でビデオレンダリングする。主にプレビュー用。
-    - [`animationout`](#animationoutメソッド): 出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力する。そのため、映像のレンダリングを行った後にしか実行できません。
-
-## `__init__`メソッド
-`__init__`メソッドは、ビデオのパス、スキャン方向、データ、およびフォルダ名の属性を引数として受け取る。このメソッドは、下記のインスタンス変数を初期化し、ビデオパスと同じレベルに出力用のディレクトリを作成し、そのディレクトリに移動する。最終的に出力されるあらゆるファイルはこのディレクトリ内に保存されます。
-
-### 引数
+#### 引数
 - `videopath` (str): ビデオファイルへのパス。
 - `sd` (bool): スリットの方向。`True`で縦スリット`False`で横スリット
 - `datapath` (str, optional): 以前に保存していた軌道データを引き継ぐ場合に使用するオプション。Numpyの多次元配列として保存されたnpyデータのパス。
 - `foldername_attr` (str, optional): オプションとして出力用のディレクトリの名称に、指定した名称を付け加えます。
 
-### インスタンス変数
+#### インスタンス変数
 1. **data**: 最小単位をスリットとする再生断面の軌道データ。デフォルトは空のリスト。
 1. **width**: ビデオの幅。`videopath` より読み込んだビデオ情報を反映する。
 1. **height**: ビデオの高さ。
@@ -434,7 +377,7 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 3. **ORG_FNAME**: 入力ビデオパスから取得したオリジナルのファイル名。
 14. **sd_attr**: スキャン方向が0の場合は"Hslit"、それ以外の場合は"Vslit"。出力ファイルの名称に適応する。 -->
 
-### example
+#### example
 ```python
 your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
 ```
@@ -445,14 +388,68 @@ your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1,datapath
 #軌道データを確認する
 print(your_maneuver.data.shape)
 ```
-<!-- 
-### append(self,maneuver,auto_zslide=True,zslide=0)
-### prepend(self,maneuver)
-### addFlat(self,frame_nums)
-### addFreeze(self,frame_nums)
-### addSlicePlane(self,frame_nums,xypoint=0.5)
--->
-## `addTrans`メソッド
+
+### 全クラスメソッドのリスト:
+- [`__init__`](#__init__): ビデオパスを受け取り初期化する。
+- [`append`](#append): 別で作成していた軌道データをインスタンス変数としてもつ軌道データの後ろに追加する。
+- [`prepend`](#prepend): 別で作成していた軌道データを、インスタンス変数としてもつ軌道データの先頭にmaneuverを追加する。
+- 軌道デザインに関わるクラス
+    - 時空間統合的な動きを加える関数
+        - [`addFlat`](#addFlat): フラットな配列を追加。
+        - [`addFreeze`](#addFreeze): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
+        - [`addSlicePlane`](#addSlicePlane): 指定した空間位置で、時間軸方向に沿って切り出した断面フレームを指定したフレーム数追加。
+        - Transposition 空間次元と時間次元の置き換え
+            - [`addTrans`](#addTrans): 空間次元と時間次元のシンプルな置き換え。縦スリットの場合はX軸とT軸が置換。横スリットの場合はY軸とT軸が置換。
+            - [`addKeepSpeedTrans`](#addKeepSpeedTrans): 既存のフレームデータの速度を維持した状態で、新しいフレームを生成し追加する。特定の空間領域に達するまで繰り返されます。
+            - [`insertKeepSpeedTrans`](#insertKeepSpeedTrans): `addKeepSpeedTrans`の発展版で、`self.data`に対して、`after_array`で受け取った配列の間を滑らかに補う。
+            - [`addWideKeyframeTrans`](#addWideKeyframeTrans): `addKeyframeTrans`の発展版。`midtide`のように、インプット画像よりもサイズを大きくして出力させる場合に使用する。
+            - [`addBlowupTrans`](#addBlowupTrans): blowupの動きをキーフレームにより詳細に制御するメソッド。このメソッドは、時間軸の解像度を徐々に変化させる試みがなされており、基本的にはXYT Transと同様の動きを持っています。時間軸のキーフレームに関する詳細な制御を行うためのキーパラメータは、`timevalues`と`timepoints`です。
+       - 時空間次元の遷移
+            - [`addInterpolation`](#addInterpolation): 与えられたパラメータをもとに補間を行い、結果をデータに追加する。
+            - [`rootingA_interporation`](#rootingA_interporation): 複数のaddInterpolationを組み合わせる。ジグザグとした動き。
+            - [`rootingB_interporation`](#rootingB_interporation): 複数のaddInterpolationを組み合わせる。ドミノが坂道を転がっていくような動き。
+            - [`addCycleTrans`](#addCycleTrans): XYTの置換を補完的に遷移させる。画面の中心線を軸に、再生断面を回転させていく。
+            - [`addCustomCycleTrans`](#addCustomCycleTrans): addCycleTransの回転の中心軸を動かすことができる。
+        - 波打つ再生断面
+            - [`addWaveTrans`](#addWaveTrans): 時間と空間のピクセルのマトリクスに対して、動的な波の形状による再生断面を作成。空間軸を固定するかの切り替えも可能。
+            - [`addEventHorizonTrans`](#addEventHorizonTrans): 空間領域は変更なし。画面の中心と周辺で時間の進行速度が変わる。前進、後退するカメラによりキャプチャされる映像のオプティカルフローをキャンセルする。
+
+    - 時間に特化した軌道操作
+        - [`applyTimeForward`](#applyTimeForward): 配列全体に時間の順方向の流れ（単位はslide_time）を付与
+        - [`applyTimeOblique`](#applyTimeOblique): 時間の斜め効果を適用
+        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlow): 基本、現在がスロー再生状態の場合に使用する。イントロ、アウトロに通常の再生速度の映像を加え、その間をイーズ処理することで滑らかに接続させる。
+        - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtend): 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。`fade`引数をTrueでスピード０に落ち着かせる。
+        - [`applyTimeLoop`](#applyTimeLoop): 与えた軌道配列全体の時間を前半、順方向、後半、逆転して、最後にまた順方向へながれ、最初と終わりの時間差がない。そのままループ再生すればシームレスなループが作られる。デフォルト周波数２hzでしか現在対応できていない。
+        - [`applyTimeClip`](#applyTimeClip): 指定したスリットの時間の流れを指定した時間に固定する。
+        - [`applyTimeSlide`](#applyTimeSlide): 一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
+        - [`applyInOutGapFix`](#applyInOutGapFix): シームレスループ作成のための補助的な関数。最初と最終フレームの差分を計算し、必要に応じてフレームの調整を行う。
+        - [`applyTimebySpace`](#applytimebyspace):スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。
+        - [`applySpaceBlur`](#applySpaceBlur): 空間的なぼかしを適用
+        - [`applyTimeBlur`](#applyTimeBlur): 時間的なぼかしを適用
+        - [`applyCustomeBlur`](#applyCustomeBlur): カスタム範囲のブラーを適用
+    - その他の軌道操作
+        - [`addFreeze`](#addFreeze): 時間軸、空間軸、ともに最終列の配列を”frame_nums”で指定されたフレーム数分生成して加える。
+        - [`preExtend`](#preExtend): 与えた軌道配列の１フレーム目を手前に延長させる。
+        - [`addExtend`](#addExtend): 与えた軌道配列の最終フレームを延長させる。Zのレートは0になる。
+        - [`zCenterArrange`](#zCenterArrange): 軌道配列と入力映像のフレーム数を照らし合わせ、入力映像の時間的な意味での中心
+
+- マニューバーの情報出力に関するメソッド
+    - [`dataCheck`](#dataCheck):`data`の情報をコンソールに出力する。
+    - [`info_setting`](#info_setting): データをスレッド数に応じて設定し、再生レートやパンを計算します。
+    - [`maneuver_CSV_out`](#maneuver_CSV_out): CSVファイルに軌道配列データを出力する。軌道の可視化を外部のソフトウェア（エクセルなど）にて作成する場合に使用する。
+    - [`scd_out`](#scd_out): supercolliderに読み込ませるサウンドプロセスコードを出力し、関連するデータをCSVで保存します。
+    - [`data_save`](#data_save): 軌道データをnumpyのファイルとして保存します。
+    - [`split_3_npysavereturn`](#split_3_npysavereturn): 軌道データのアウトイメージの横幅が入力の３倍サイズを指定した場合に使用。Left, center, Rightとして3分割して保存。3分割されたNPYファイルのパスを配列で返す。
+- マニューバーの可視化ファイルの出力に関する
+    - [`maneuver_2dplot`](#maneuver_2dplot): 2Dプロットを作成して、それに関連するデータを画像として保存します。
+    - [`maneuver_3dplot`](#maneuver_3dplot): 3Dプロットを生成し、その画像や動画を保存する。
+- 映像renderingに関するメソッド
+    - [`transprocess`](#transprocess): 映像をトランスプロセスします。このメソッドは映像のレンダリングを行い、セパレートレンダリングや他のオプションをサポートしています。
+    - [`transprocess_typeB`](#transprocess_typeB): 映像のレンダリングを行う。セパレートプロセスをアウトプットの時間次元ではなく、インプットの時間次元を分割させて処理します。時間軸方向に極端に幅を広くとるようなマニューバーが組み込まれている場合はこのメソッドを使うことで、レンダリング速度が上がります。
+    - [`pretransprocess`](#pretransprocess): フレーム数を間引いて、高速でビデオレンダリングする。主にプレビュー用。
+    - [`animationout`](#animationout): 出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力する。そのため、映像のレンダリングを行った後にしか実行できません。
+
+## `addTrans`
 
 `addTrans`メソッドは、`wr_array`に新しいトランス軌跡を追加して返すための関数です。このメソッドは、特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
 
@@ -470,7 +467,7 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
 
-## `addBlowupTrans`メソッド
+## `addBlowupTrans`
 
 `addBlowupTrans`メソッドは、キーフレームを使用して"blowup"の動きを制御するためのメソッドです。提供されたキーフレームを利用して、定義されたフレーム間で特定のモーションパターンを生成します。
 
@@ -485,19 +482,19 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 
 ### 使用例
 ```python
-your_object.addBlowupTrans(frame_nums=100, deg=45, speed_round=True, connect_round=1,timevalues=[your_object.count,your_object.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
+your_object.addBlowupTrans(frame_nums=100, deg=360, speed_round=True, connect_round=1,timevalues=[your_object.count,your_object.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
 ```
 
 ![Alt text](images/sample_2023_0618_Vslit+addBlowupTrans_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+addBlowupTrans_3dPlot.gif)
 
 
-## `addInterpolation`メソッド
+## `addInterpolation`
 
 `interpolation` メソッドは、指定された軌道データをもとにインターポレーションを行い、新たなフレームを生成するためのメソッドです。この関数は、特定のフレーム数にわたり、複雑な変換を加えるためのものです。
 
 ### 引数
-- `frame_nums`(int): インターポレーションを行うフレーム数。
+- `frame_nums`(int): 追加するフレーム数。
 - `interporation_direction`(int): インターポレーションの方向。
 - `z_direction`(int): Z方向におけるインターポレーションの方向。
 - `axis_position`(int): 回転やインターポレーションの中心となる位置。
@@ -519,7 +516,7 @@ your_object.addInterpolation(100, 0, 1, 1,reversal=True)
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
 
 
-## `addCycleTrans`メソッド
+## `addCycleTrans`
 
 `addCycleTrans` メソッドは、サイクル的な変換（トランス）をデータに追加するためのものです。特定のフレーム数にわたって、サイクル的な角度変化を考慮して変換を行います。
 
@@ -537,7 +534,7 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
 
-## `addCustomCycleTrans`メソッド
+## `addCustomCycleTrans`
 
 `addCustomCycleTrans` このクラス関数は、`addCycleTrans`での中心軸を自由に動かすことができます。
 `start_center`引数で指定した位置から`end_center`で指定した位置までリニアに変化させます。
@@ -561,7 +558,7 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
 
-## `transprocess`メソッド
+## `transprocess`
 このメソッドは映像のレンダリングを行います。
 
 ### 引数
@@ -585,8 +582,7 @@ your_maneuver.applyTimeForward(1)
 your_maneuver.transprocess()
 ```
 
-<!-- ## transprocess_typeB(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0) -->
-## `animationout`メソッド
+## `animationout`
  `animationout`関数は、出力した映像データを参照して、3Dグラフ上に画像のピクセルカラーをプロットし、結果をアニメーションとして出力します。時空間キューブ上での時空間操作に基づく再生断面の軌道を可視化させます。 'maveuver_2dplot','maveuver_3dplot'とは違いピクセルの色をマッピングすることでより入力の映像データとの対応を直感的に理解しやすいビジュアライズです。  
  そのため、映像のレンダリングを行った後にしか実行できません。もし、既に書き出しの映像データが存在する場合は、インスタンス変数'out_videopath'にて情報を呼び出す必要があります。
  
@@ -595,17 +591,14 @@ your_maneuver.transprocess()
  your_maneucer.animationout()
  ```
 
- ## 引数
+ ### 引数
 - `outFrame_nums` (`int`, default: `100`): 出力するフレーム数。
 - `drawLineNum` (`int`, default: `250`): 描画するラインの数。
 - `dpi` (`int`, default: `200`): 出力画像のDPI。
 - `out_fps` (`int`, default: `10`): 出力動画のフレームレート。
 
-## 使用例
+### 使用例
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)
-
-
-
 
 ## コントリビュート
 このプロジェクトへのコントリビュートを歓迎します。  

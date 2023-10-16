@@ -2586,8 +2586,7 @@ class drawManeuver:
         if len(timevalues)==0:
             timevalues=[self.count,self.scan_nums,1,0]#左端から右端までの時間差（Frame）
             timepoints=[0,0.7,0.95,1]
-            timecenter=[0.5,0.5,0.5,0.5]
-
+            if len(timecenter)== 0 : timecenter=[0.5,0.5,0.5,0.5]
         else : 
             if timevalues[0] > self.count : timevalues[0] = self.count
             #もし、timepoints が設定されていなければ、自動的に入力する
@@ -2600,6 +2599,7 @@ class drawManeuver:
         print("timevalues:",timevalues,"timepoints:",timepoints)
         firstzrange=np.max(timevalues)
         pre_front_point = int((self.count-firstzrange)/2)
+        prezrange=firstzrange
         for i in range(0,frame_nums):
             crad = math.radians(deg) * i / (frame_nums-1) if speed_round == False else math.radians(deg)*(1-(math.cos(math.radians(i/(frame_nums-1)*180))+1.0)/2)
             zcos = math.cos(crad)
@@ -2611,37 +2611,29 @@ class drawManeuver:
             ts = (i-frame_nums*timepoints[fn])/(frame_nums*(timepoints[fn+1]-timepoints[fn])) 
             # 細かい動きをつける場合。リニアかノンリニアか変数で選択
             ts = ts if connect_round == 0 else ((math.sin(math.radians(ts*180-90)))/2+0.5)
-            print(fn,i,ts)
+            # print(fn,i,ts)
             if self.scan_direction == 1 : 
                 ajstlen=timevalues[fn+1]/self.width+(gaptime/self.width)-(gaptime/self.width)*ts
-                nowzrange=ajstlen*self.width
+                nowzrange=ajstlen*self.scan_nums
                 centerdirection= timecenter[fn] * (1 - ts) +  timecenter[fn+1] * ts  # 線形補完
-                slide = centerdirection * nowzrange
             else : 
                 ajstlen=timevalues[fn+1]/self.height+(gaptime/self.height)-(gaptime/self.height)*ts
-                nowzrange=ajstlen*self.width
-                slide = centerdirection * nowzrange
-            front_point = pre_front_point + slide
-            # pre_front_point = int((self.count-nowzrange)/2) + slide
-            # print(i,ajstlen,front_point)
+                nowzrange=ajstlen*self.scan_nums
+                centerdirection= timecenter[fn] * (1 - ts) +  timecenter[fn+1] * ts  # 線形補完
+            diffzrange = prezrange-nowzrange
+            pre_front_point += int(diffzrange*centerdirection)
+            prezrange = nowzrange
             if self.scan_direction == 1:
-                xp = int((self.width-1)-(zcos*(self.width-1)/2+(self.width-1)/2))
+                xp = (self.width-1)-(zcos*(self.width-1)/2+(self.width-1)/2)
                 for x in range(0,int(self.width)):#Xは固定でzポイントが飛び飛びから詰まっていく。
-                    zp=round(front_point+x*ajstlen)
-                    # write_array.append([xp,zp,ajstlen>0])
-                    # zadd = (xp  /  self.width)* (self.width*zeffect)
+                    zp=pre_front_point+x*ajstlen
                     write_array.append([xp,zp])
-                    # print(i,t,ajstlen,t*ajstlen,zp,i*(scale_gap/frame_nums))
             else:
-                yp = int((self.height-1)-(zcos*(self.height-1)/2+(self.height-1)/2))
+                yp = (self.height-1)-(zcos*(self.height-1)/2+(self.height-1)/2)
                 for y in range(0,int(self.height)):#Xは固定でzポイントが飛び飛びから詰まっていく。
-                    zp=round(front_point+y*ajstlen)
+                    zp=pre_front_point+y*ajstlen
                     write_array.append([yp,zp])
             wr_array.append(write_array)
-            # print(write_array[-1])
-            # print(self.count )
-            # print(i,ajstlen,ajstlen*(self.width-1),xp,zp,i*(scale_gap/frame_nums))
-            # if i>frame_nums-100 :breakpoint()
         if len(self.data) != 0: self.data = np.vstack((self.data,np.array(wr_array)))
         else: self.data=np.array(wr_array)
         self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(frame_nums)+"-deg"+str(deg))

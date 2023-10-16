@@ -32,15 +32,15 @@ A programming tool for manipulating time and space in video data. It's primarily
     - [Combining Audio and Video](#combining-audio-and-video)
 - [drawManeuver Class](#drawmaneuver-class)
   - [Class Variables](#class-variables)
-  - [Instance Variables](#instance-variables)
+  - [initialization](#initialization)
   - [List of All Class Methods](#list-of-all-class-methods)
-- [__init__](#__init__)
-- [addTrans](#addtrans)
-- [addInterpolation](#addinterpolation)
-- [addCycleTrans](#addcycletrans)
-- [addcustomCycleTrans](#addcustomcycletrans)
-- [transprocess](#transprocess)
-- [animationout](#animationout)
+  - [addTrans](#addtrans)
+  - [addBlowupTrans](#addblowuptrans)
+  - [addInterpolation](#addinterpolation)
+  - [addCycleTrans](#addcycletrans)
+  - [addcustomCycleTrans](#addcustomcycletrans)
+  - [transprocess](#transprocess)
+  - [animationout](#animationout)
 - [Contribute](#contribute)
 - [License](#license)
 
@@ -343,6 +343,42 @@ This class is the main component of the Imgtrans library.
 - `audio_form_out`: Setting for audio format output (default is False)
 - `embedHistory_intoName`: Setting for embedding history into the name (default is True)
 
+### initialization
+The class initialization method takes the attributes of the video path, scan direction, data, and folder name as arguments. This method initializes the instance variables below, creates an output directory at the same level as the video path, and moves to that directory. All output files will be saved within this directory.
+
+#### Parameters
+- `videopath` (str): Path to the video file.
+- `sd` (bool): Direction of the slit. `True` for vertical slit, `False` for horizontal slit.
+- `datapath` (str, optional): Optional path to previously saved maneuver data, saved as a multi-dimensional array in npy format.
+- `foldername_attr` (str, optional): Optionally appends the specified name to the output directory's name.
+
+#### Instance Variables
+1. **data**: Maneuver data of the playback section with the slit as the minimum unit. Defaults to an empty list.
+1. **width**: Width of the video. Reflects the video information read from `videopath`.
+1. **height**: Height of the video.
+7. **count**: Total number of video frames.
+8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#class-variables).
+10. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
+11. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
+12. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
+15. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
+1. **out_videopath**: Holds the path of the output video. Initially empty. Called in [animationout](#animationout).
+18. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
+13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
+
+#### Example
+```python
+your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
+```
+To inherit previously saved maneuver data, refer to the example below:
+```python
+import numpy as np
+your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1, datapath="path/to/data.npy")
+# Check the maneuver data
+print(your_maneuver.data.shape)
+```
+
+
 ### List of All Class Methods:
 - [`__init__`](#__init__): Initializes by receiving the video path.
 - [`append`](#append): Appends the maneuver data created separately to the end of the maneuver data held as an instance variable.
@@ -401,40 +437,6 @@ This class is the main component of the Imgtrans library.
     - [`pretransprocess`](#pretransprocess): Video rendering at high speed by thinning out the number of frames. It is for preview purposes only.
     - [`animationout`](#animationout): Reference the rendered video data, plot pixel colors from images onto a 3D graph, and output the result as an animation. Can only be executed after video rendering.
 
-## `__init__`
-The `__init__` method takes the attributes of the video path, scan direction, data, and folder name as arguments. This method initializes the instance variables below, creates an output directory at the same level as the video path, and moves to that directory. All output files will be saved within this directory.
-
-### Parameters
-- `videopath` (str): Path to the video file.
-- `sd` (bool): Direction of the slit. `True` for vertical slit, `False` for horizontal slit.
-- `datapath` (str, optional): Optional path to previously saved maneuver data, saved as a multi-dimensional array in npy format.
-- `foldername_attr` (str, optional): Optionally appends the specified name to the output directory's name.
-
-### Instance Variables
-1. **data**: Maneuver data of the playback section with the slit as the minimum unit. Defaults to an empty list.
-1. **width**: Width of the video. Reflects the video information read from `videopath`.
-1. **height**: Height of the video.
-7. **count**: Total number of video frames.
-8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#class-variables).
-10. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
-11. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
-12. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
-15. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
-1. **out_videopath**: Holds the path of the output video. Initially empty. Called in [animationout](#animationout).
-18. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
-13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
-
-### Example
-```python
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
-```
-To inherit previously saved maneuver data, refer to the example below:
-```python
-import numpy as np
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1, datapath="path/to/data.npy")
-# Check the maneuver data
-print(your_maneuver.data.shape)
-```
 
 ## `addTrans`
 
@@ -454,12 +456,33 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
 
+
+## `addBlowupTrans`
+
+`addBlowupTrans` method behaves similarly to `addTrans`, but allows the resolution of the time axis to be transitioned using the provided keyframes.
+
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+- `deg`(int, optional, default:360):set scan direction movement `360` for round trip. One way at `180`.
+- `speed_round`(bool, optional, default: `True`): whether the transition in the scan direction is smooth or not.
+- `connect_round`(int, optional, default: `1`): whether to smooth the movement between keyframes.
+- `timevalues`(list, optional): list of keyframe values. The time range is specified in frames.
+- `timepoints`(list, optional):list of keyframe times for `frame_nums`, specified as a ratio of 0~1.
+- `timecenter`(list, optional):a list of center points for the keyframe time range transition. If not provided, it defaults to 0.5 for each keyframe.
+
+### Usage Example
+```python
+your_object.addBlowupTrans(frame_nums=100, deg=360, speed_round=True, connect_round=1,timevalues=[your_object.count,your_object.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
+```
+
+![Alt text](images/sample_2023_0618_Vslit+addBlowupTrans_3dPlot.gif)
+![Alt text](images/sample_2023_0618_Hslit+addBlowupTrans_3dPlot.gif)
 ## `addInterpolation` 
 
 The `interpolation` method is based on the specified maneuver data to perform interpolation and to generate new frames. This function is designed to apply complex transformations over a specific number of frames.
 
 ### Parameters
-- `frame_nums`(int): Number of frames for interpolation.
+- `frame_nums`(int): Number of frames to add.
 - `interporation_direction`(int): Direction of interpolation.
 - `z_direction`(int): Direction of interpolation in the Z axis.
 - `axis_position`(int): Central position for rotation and interpolation.
