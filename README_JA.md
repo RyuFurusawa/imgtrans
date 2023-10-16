@@ -489,6 +489,19 @@ your_object.addBlowupTrans(frame_nums=100, deg=360, speed_round=True, connect_ro
 ![Alt text](images/sample_2023_0618_Hslit+addBlowupTrans_3dPlot.gif)
 
 
+### 応用例
+```python
+bm.outfps=60
+bm.addBlowupTrans(addnum,1080,timevalues=[int(bm.width),int(bm.width)],timepoints=[0,1],timecenter=[0.5,0.5])
+bm.applyTimeSlide(14280)
+bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
+```
+<!-- [![Practice for Time and Space, 2023](https://i.vimeocdn.com/video/1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_295x166)](https://vimeo.com/873371964) -->
+
+[![Practice for Time and Space, 2023](https://i.vimeocdn.com/filter/overlay?src0=https%3A%2F%2Fi.vimeocdn.com%2Fvideo%2F1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_295x166&src1=http%3A%2F%2Ff.vimeocdn.com%2Fp%2Fimages%2Fcrawler_play.png)](https://vimeo.com/873371964)
+
+### Samples
+[![Waves Etude[TYX 1.8-30pps 201113]](https://i.vimeocdn.com/filter/overlay?src0=https%3A%2F%2Fi.vimeocdn.com%2Fvideo%2F1232415523-ea74b1b1dc98ff5220a9fb91892c0d6f5808a8cb3a30b91647b0878233c98cdc-d_295x166&src1=http%3A%2F%2Ff.vimeocdn.com%2Fp%2Fimages%2Fcrawler_play.png)](https://vimeo.com/597510638)
 ## `addInterpolation`
 
 `interpolation` メソッドは、指定された軌道データをもとにインターポレーションを行い、新たなフレームを生成するためのメソッドです。この関数は、特定のフレーム数にわたり、複雑な変換を加えるためのものです。
@@ -533,6 +546,8 @@ your_object.addInterpolation(100, 0, 1, 1,reversal=True)
 your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra_degree=5, speed_round=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
+### Samples
+[![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/filter/overlay?src0=https%3A%2F%2Fi.vimeocdn.com%2Fvideo%2F1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_295x166&src1=http%3A%2F%2Ff.vimeocdn.com%2Fp%2Fimages%2Fcrawler_play.png)](https://vimeo.com/749807843)
 
 ## `addCustomCycleTrans`
 
@@ -557,6 +572,8 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
+### Samples
+[![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/filter/overlay?src0=https%3A%2F%2Fi.vimeocdn.com%2Fvideo%2F1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_295x166&src1=http%3A%2F%2Ff.vimeocdn.com%2Fp%2Fimages%2Fcrawler_play.png)](https://vimeo.com/749807843)
 
 ## `transprocess`
 このメソッドは映像のレンダリングを行います。

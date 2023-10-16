@@ -56,6 +56,7 @@ class drawManeuver:
         self.log = 0
         self.infolog = 0
         self.sc_FNAME =self.ORG_NAME + ".AIFF"
+        self.cycle_axis=[]
         #ディレクトリ作成、そのディデクトリに移動
         NPATH = self.ORG_PATH+"/"+self.ORG_NAME+"_"+self.out_name_attr 
         if os.path.isdir(NPATH)==False:
@@ -526,12 +527,17 @@ class drawManeuver:
             self.data[k,:,1]+=now_point
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(trackslit)+"-"+str(cliptime))
 
-    # スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。2023.10.10added
-    def applyTimebySpace(self,v):
+    # スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。mean_mode=1でself.cycle_axisを参照する。mean_mode=2で、スリット空間位置の平均に対して計算する。2023.10.10added
+    def applyTimebySpace(self,v,mode=0):
         print(sys._getframe().f_code.co_name)
         for k in range(0,int(self.data.shape[0])):#Xは固定でzポイントが飛び飛びから詰まっていく。
             # self.data[k,:,1] += v*(self.data[k,:,0]/self.scan_nums)
-            self.data[k,:,1] =self.data[k,:,1] + v*(self.data[k,:,0]/self.scan_nums)
+            if mode == 0 :
+                self.data[k,:,1] = self.data[k,:,1] + v*(self.data[k,:,0]/self.scan_nums)  
+            elif mode == 1:
+                self.data[k,:,1] = self.data[k,:,1] + v*(self.cycle_axis[k]/self.scan_nums)  
+            elif mode == 2:
+                self.data[k,:,1] =self.data[k,:,1] + v*(np.mean(self.data[k,:,0])/self.scan_nums) 
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(v))
 
 
@@ -2379,6 +2385,8 @@ class drawManeuver:
             maxz = self.height if self.scan_direction == 0 else self.width
         
         shift_num=int(extra_degree/90)#反転する回数を記録
+        if len(self.cycle_axis) : self.cycle_axis=[]
+        
         for i in range(0,frame_nums):
             crad = math.radians(extra_degree)+math.radians(cycle_degree)* i / (frame_nums-1) if speed_round == False else math.radians(extra_degree)+math.radians(cycle_degree)*(1-(math.cos(math.radians(i/(frame_nums-1)*180))+1.0)/2)    
             if i > 1 and ((math.cos(crad) < 0 and ccos > 0) or (math.cos(crad) > 0 and ccos < 0)):#反転するタイミング
@@ -2419,6 +2427,7 @@ class drawManeuver:
                         # print(i,x,zp,maxz/self.width,shift_num,zslide,pernum,self.width/2-xcenter,((x-xcenter)+((self.width-x)-xcenter)))
             write_array = np.array(write_array)
             wr_array.append(write_array)
+            self.cycle_axis.append(xcenter)
         wr_array = np.array(wr_array)
         # plt.plot(csinarray)
         # plt.plot(ccosarray)
