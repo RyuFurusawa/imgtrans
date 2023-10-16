@@ -580,6 +580,40 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 [Click to watch on Vimeo](https://vimeo.com/842051869)
 
 
+## `addWaveTrans`
+
+The `addWaveTrans` method generates a playback cross-section with dynamic waveforms. When `flow` is set to `True`, it will also move the spatial axis.
+
+### Parameters
+- `frame_nums`(int): Number of frames to be added.
+- `cycle_degree`(float): Wavelength of the wave. Setting it to `360` produces a 2Hz wave relative to the scan direction length, and `180` for a 1Hz wave.
+- `zdepth`(float): Amplitude of the wave in the T dimension of XYT.
+- `flow`(bool, default: `True`): Specifies whether to move the spatial dimension. Set to `True` to enable movement.
+- `zslide`(float, default: `0`): Shift in the T dimension of XYT.
+- `speed_round`(bool, optional, default: `True`): Whether to smoothly transition dynamically.
+
+### Usage Example
+```python
+your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=False)
+```
+![sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+![sample Hslit](images/sample_2023_0618_Hslit+WaveTrans180yfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+```python
+your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=True)
+```
+![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+
+### Sample
+[![20220106_RFS1459-4K_Vertical_wavetrans_8000seq_90deg-Wave-Flow1500zdepthsep_index0](https://i.vimeocdn.com/video/1343615656-2079087154dd4d972a213dff4f14eb93dd838f95d9ba485c148d8ab121bfa6ed-d_640)](https://vimeo.com/663872580)
+
+[Click to watch on Vimeo](https://vimeo.com/663872580)
+
+
 ## `transprocess`
 This method performs video rendering.
 

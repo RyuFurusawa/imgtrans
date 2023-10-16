@@ -2271,7 +2271,7 @@ class drawManeuver:
         return [self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_L.npy',self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_C.npy',self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_R.npy']
 
     # 時間と空間のピクセルのマトリクスに対して、動的な波の形状により再生断面を得る。空間軸を固定するか否かの切り替えも可能
-    def addWaveTrans(self,frame_nums,cycle_degree,zdepth,flow=1,zslide=0,speed_round = True):
+    def addWaveTrans(self,frame_nums,cycle_degree,zdepth,flow=True,zslide=0,speed_round = True):
         #wr_arrayへの書き込み[Out画像のXorY,引用するin画像のXorY,in画像のz]
         wr_array=[]
         for i in range(0,frame_nums):

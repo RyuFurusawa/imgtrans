@@ -558,7 +558,7 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
 
-### Samples
+### Sample
 [![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/video/1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_295x166)](https://vimeo.com/749807843)
 
 [Click to watch on Vimeo](https://vimeo.com/749807843)
@@ -581,10 +581,46 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
-### Samples
+### Sample
 [![GX010182_2023_0703_Vslit+CustomCycle--7play_4_1](https://i.vimeocdn.com/video/1710602324-16f6e6c0569e43a17f42400498f679e55570f513f34add67f255da50fe445479-d_295x166)](https://vimeo.com/842051869)
 
 [Click to watch on Vimeo](https://vimeo.com/842051869)
+
+
+## `addWaveTrans`
+
+`addWaveTrans`メソッドは、動的な波の形状の再生断面を作ります。`flow`の設定を`True`にすることで空間軸も、動かします。
+
+### 引数
+- `frame_nums`(int): 追加するフレーム数。
+- `cycle_degree`(float): 波の波長。`360`の指定でスキャン方向の長さに対して２hz、180で1hzの波を形成する
+- `zdepth`(float):XYTのうちのT方向の波の振幅。
+- `flow`(bool, default: `Ture`): 空間次元を動かすかどうか`True`にすることで動かす。
+- `zslide`(float, default: `0`): XYTのT方向のシフト。
+- `speed_round`(bool, optional, default: `True`): 動的な推移を円滑にするか否か。
+
+### 使用例
+```python
+your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=False)
+```
+![sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+![sample Hslit](images/sample_2023_0618_Hslit+WaveTrans180yfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+```python
+your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=True)
+```
+![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+
+
+### サンプル
+[![20220106_RFS1459-4K_Vertical_wavetrans_8000seq_90deg-Wave-Flow1500zdepthsep_index0](https://i.vimeocdn.com/video/1343615656-2079087154dd4d972a213dff4f14eb93dd838f95d9ba485c148d8ab121bfa6ed-d_640)](https://vimeo.com/663872580)
+
+[Click to watch on Vimeo](https://vimeo.com/663872580)
+
+
 
 ## `transprocess`
 このメソッドは映像のレンダリングを行います。
