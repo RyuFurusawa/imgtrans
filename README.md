@@ -39,6 +39,7 @@ A programming tool for manipulating time and space in video data. It's primarily
   - [addInterpolation](#addinterpolation)
   - [addCycleTrans](#addcycletrans)
   - [addcustomCycleTrans](#addcustomcycletrans)
+  - [addWaveTrans](#addwavetrans)
   - [transprocess](#transprocess)
   - [animationout](#animationout)
 - [Contribute](#contribute)
@@ -457,7 +458,7 @@ your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
 
 ### Sample
-[![Waves Etude [TYX-60pps 2009061303]](https://i.vimeocdn.com/video/956287334-20be93368aef7ad17c1bec20c9973f9f66c296056fbe1950d8cfa7200c9a0f11-d_295x166)](https://vimeo.com/457262317)
+[![Waves Etude [TYX-60pps 2009061303]](https://i.vimeocdn.com/video/956287334-20be93368aef7ad17c1bec20c9973f9f66c296056fbe1950d8cfa7200c9a0f11-d_640)](https://vimeo.com/457262317)
 
 [Click to watch on Vimeo](https://vimeo.com/457262317)
 
@@ -489,15 +490,15 @@ bm.addBlowupTrans(addnum,1080,timevalues=[int(bm.width),int(bm.width)],timepoint
 bm.applyTimeSlide(14280)
 bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
 ```
-<!-- [![Practice for Time and Space, 2023](https://i.vimeocdn.com/video/1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_295x166)](https://vimeo.com/873371964) -->
+<!-- [![Practice for Time and Space, 2023](https://i.vimeocdn.com/video/1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_640)](https://vimeo.com/873371964) -->
 
-[![Practice for Time and Space, 2023](https://i.vimeocdn.com/video/1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_295x166)](https://vimeo.com/873371964)
+[![Practice for Time and Space, 2023](https://i.vimeocdn.com/video/1736848219-6e1ced91a2ccc3465c8dfcefc3ed159f497845e7bdd47d535068d51cafc2c7a6-d_640)](https://vimeo.com/873371964)
 
 [Click to watch on Vimeo](https://vimeo.com/873371964)
 
 
 ### Sample
-[![Waves Etude[TYX 1.8-30pps 201113]](https://i.vimeocdn.com/video/1232415523-ea74b1b1dc98ff5220a9fb91892c0d6f5808a8cb3a30b91647b0878233c98cdc-d_295x166)](https://vimeo.com/597510638)
+[![Waves Etude[TYX 1.8-30pps 201113]](https://i.vimeocdn.com/video/1232415523-ea74b1b1dc98ff5220a9fb91892c0d6f5808a8cb3a30b91647b0878233c98cdc-d_640)](https://vimeo.com/597510638)
 
 [Click to watch on Vimeo](https://vimeo.com/597510638)
 
@@ -547,7 +548,7 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
 
 ### Sample
-[![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/video/1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_295x166)](https://vimeo.com/749807843)
+[![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/video/1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_640)](https://vimeo.com/749807843)
 
 [Click to watch on Vimeo](https://vimeo.com/749807843)
 
@@ -575,7 +576,7 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
 ### Sample
-[![GX010182_2023_0703_Vslit+CustomCycle--7play_4_1](https://i.vimeocdn.com/video/1710602324-16f6e6c0569e43a17f42400498f679e55570f513f34add67f255da50fe445479-d_295x166)](https://vimeo.com/842051869)
+[![GX010182_2023_0703_Vslit+CustomCycle--7play_4_1](https://i.vimeocdn.com/video/1710602324-16f6e6c0569e43a17f42400498f679e55570f513f34add67f255da50fe445479-d_640)](https://vimeo.com/842051869)
 
 [Click to watch on Vimeo](https://vimeo.com/842051869)
 
@@ -596,17 +597,14 @@ The `addWaveTrans` method generates a playback cross-section with dynamic wavefo
 ```python
 your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=False)
 ```
-![sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
-
-![sample Hslit](images/sample_2023_0618_Hslit+WaveTrans180yfix_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
+![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xfix_3dPlot.gif)
+![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yfix_3dPlot.gif)
 
 ```python
 your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=True)
 ```
-![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
-
-![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yflow_3dPlot-%E3%82%A2%E3%83%8B%E3%83%A1%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B7%E3%82%99%EF%BC%88%E5%A4%A7%EF%BC%89.gif)
-
+![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xflow_3dPlot.gif)
+![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yflow_3dPlot.gif)
 
 ### Sample
 [![20220106_RFS1459-4K_Vertical_wavetrans_8000seq_90deg-Wave-Flow1500zdepthsep_index0](https://i.vimeocdn.com/video/1343615656-2079087154dd4d972a213dff4f14eb93dd838f95d9ba485c148d8ab121bfa6ed-d_640)](https://vimeo.com/663872580)
