@@ -117,7 +117,7 @@ For more details, please refer to the structure of [`data`](#structure-of-data).
 #### 2. Main Methods Adapting the Flow of Time
 - [`applyTimeForward`](#applytimeforward): Provides forward flow of time to the entire array.
 - [`applyTimeOblique`](#applytimeoblique): Shifts time slightly for each slit.
-- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslow): Playback starts at rate 1, slows down, and then returns to rate 1.
+- [`applyTimeForwardAutoSlow`](#applytimeforwardautoslow): Playback starts at rate 1, slows down, and then returns to rate 1.
 - [`applyTimeLoop`](#applytimeloop): Imparts a seamless loop structure.
 - [`applyTimeClip`](#applytimeclip): Fixes the flow of time for a specified slit to a specified time.
 - [`applyTimeBlur`](#applytimebluR): Applies a temporal blur.
@@ -408,7 +408,7 @@ print(your_maneuver.data.shape)
     - **Time-focused maneuver**
         - [`applyTimeForward`](#applytimeforward): Apply forward time flow (in slide_time units) to the entire array.
         - [`applyTimeOblique`](#applytimeoblique): Apply oblique time effect.
-        - [`applyTimeForwordAutoSlow`](#applytimeforwordautoslow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
+        - [`applyTimeForwardAutoSlow`](#applytimeforwardautoslow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
         - [`applyTimeFlowKeepingExtend`](#applytimeflowkeepingextend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
         - [`applyTimeLoop`](#applytimeloop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
         - [`applyTimeClip`](#applytimeclip): Fix the time flow of specified slits to a specific time.

@@ -117,7 +117,7 @@ your_maneuver=imgtrans.drawManeuver(videopath,1)
 #### 2. 主な時間の流れを適応させる関数
 - [`applyTimeForward`](#applytimeforwardselfslide_timenone): 配列全体に時間の順方向の流れを付与
 - [`applyTimeOblique`](#applytimeobliqueselfmaxgap): 時間のずれをスリットのごとに一定数づつ時間をずらす
-- [`applyTimeForwordAutoSlow`](#applytimeforwordautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): 再生レート１からスロー再生になり最後に再生レート１に戻る
+- [`applyTimeForwardAutoSlow`](#applytimeforwardautoslowselfslide_timeint1defaultaddtimeint100addtimeeasingbooltrueeaseratiofloat03): 再生レート１からスロー再生になり最後に再生レート１に戻る
 - [`applyTimeLoop`](#applytimeloopselfslide_timefreq2stay_time0): シームレスなループ構造を付与。
 - [`applyTimeClip`](#applytimeclipselftrackslitintcliptimenone): 指定したスリットの時間の流れを指定した時間に固定する。
 - [`applyTimeBlur`](#applytimeblurselfbl_time): 時間的なぼかしを適用
@@ -418,7 +418,7 @@ print(your_maneuver.data.shape)
     - 時間に特化した軌道操作
         - [`applyTimeForward`](#applyTimeForward): 配列全体に時間の順方向の流れ（単位はslide_time）を付与
         - [`applyTimeOblique`](#applyTimeOblique): 時間の斜め効果を適用
-        - [`applyTimeForwordAutoSlow`](#applyTimeForwordAutoSlow): 基本、現在がスロー再生状態の場合に使用する。イントロ、アウトロに通常の再生速度の映像を加え、その間をイーズ処理することで滑らかに接続させる。
+        - [`applyTimeForwardAutoSlow`](#applyTimeForwardAutoSlow): 基本、現在がスロー再生状態の場合に使用する。イントロ、アウトロに通常の再生速度の映像を加え、その間をイーズ処理することで滑らかに接続させる。
         - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtend): 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。`fade`引数をTrueでスピード０に落ち着かせる。
         - [`applyTimeLoop`](#applyTimeLoop): 与えた軌道配列全体の時間を前半、順方向、後半、逆転して、最後にまた順方向へながれ、最初と終わりの時間差がない。そのままループ再生すればシームレスなループが作られる。デフォルト周波数２hzでしか現在対応できていない。
         - [`applyTimeClip`](#applyTimeClip): 指定したスリットの時間の流れを指定した時間に固定する。
