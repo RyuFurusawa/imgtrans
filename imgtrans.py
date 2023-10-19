@@ -62,11 +62,19 @@ class drawManeuver:
         if os.path.isdir(NPATH)==False:
             os.makedirs(NPATH)
         os.chdir(NPATH)
+        # 現在の日時を取得
+        now = datetime.now()
+        # 日、時間、分の形式で文字列に変換
+        log_entry = now.strftime('%Y-%m-%d %H:%M')
+        append_to_logfile("-")
+        append_to_logfile(self.ORG_FNAME+"_"+ sd_attr)
+        append_to_logfile(log_entry)
 
     #added 2023 10/6
     def maneuver_log(self,module_name_attr):
         self.log+=1
         self.out_name_attr+="_"+module_name_attr
+        append_to_logfile(str(self.log)+":"+module_name_attr)
         if self.auto_visualize_out : 
             if self.default_debugmode : self.maneuver_2dplot(debugmode=True)
             else : self.maneuver_2dplot()
@@ -565,13 +573,14 @@ class drawManeuver:
         if np.amin(self.data[:,:,1]) < 0  or np.amax(self.data[:,:,1]) > (self.count-subtract_count) :
             add_attr=""
             if np.amin(self.data[:,:,1]) < 0 :
-                self.data[:,:,1]+=np.amin(self.data[:,:,1])*-1
+                add_frame=np.amin(self.data[:,:,1])*-1
+                self.data[:,:,1]+=add_frame
                 print("zp range-調整後:",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
-                add_attr+="_timeSlide"
+                add_attr+="_timeSlide"+str(int(add_frame))+"f"
             if np.amax(self.data[:,:,1]) > (self.count-subtract_count):
                 scale_rate=(self.count-subtract_count) /np.amax(self.data[:,:,1])
                 self.data[:,:,1]=self.data[:,:,1]*scale_rate
-                add_attr+="_timeScaleMimi"
+                add_attr+="_timeScaling"+str(scale_rate)
             self.maneuver_log(add_attr)
         else : print("check ok!!!")
      #一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
@@ -628,7 +637,7 @@ class drawManeuver:
         #実験用。リバーブなどに適応することをイメージ
         for i in range(self.sc_now_depth.shape[0]):
             self.sc_now_depth[i]=abs(np.amax(self.data[i,:,1])-np.amin(self.data[i,:,1]))
-        self.infolog=self.log
+        self.infolog = self.log
     
     # supercolliderに読み込ませるサウンドプロセスコードを出力する。
     def scd_out(self,thread_num=None,audio_path=None):
@@ -992,6 +1001,7 @@ class drawManeuver:
 
     # 映像のレンダリング
     def transprocess(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0):
+        append_to_logfile("transprocess:"+str(separate_num))
         #self.outfpsはグローバルで定義
         if sep_end_num == None:sep_end_num = separate_num
         runFirstTime = time.time()
@@ -1002,6 +1012,8 @@ class drawManeuver:
         rotate_direction = False
         print("framecount=",self.data.shape[0],"(",self.data.shape[0]/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
         print("self.data[:,:,-1] min-max =",np.amin(self.data[:,:,-1]),np.amax(self.data[:,:,-1]))
+        append_to_logfile("framecount="+str(self.data.shape[0]))
+        append_to_logfile("self.data[:,:,-1] min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
         if np.amin(self.data[:,:,-1])<0:
             print("z<0,error")
             return
@@ -1128,6 +1140,7 @@ class drawManeuver:
                     if self.sepVideoOut == 1  or separate_num == 1 : video.release()
                     break
             print("done:",s+1,"/",separate_num)
+            append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+"_"+str(round(knterval+Interval,2))+"sec")
             print("\r")
             gc.collect()
         self.cap.release()
@@ -1164,9 +1177,11 @@ class drawManeuver:
         runOverTime = time.time()
         lnterval = round(runOverTime-runFirstTime,2)
         print("All Done",lnterval,"sec")
+        append_to_logfile("All Done"+str(lnterval)+"sec")
 
     # 映像のレンダリング   2023.9 added
     def transprocess_typeB(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,t_index_lists_path=None):
+        append_to_logfile("transprocess_typeB:"+str(separate_num))
         #self.outfpsはグローバルで定義
         if sep_end_num == None:sep_end_num = separate_num
         runFirstTime = time.time()
@@ -1177,6 +1192,8 @@ class drawManeuver:
         rotate_direction = False
         print("framecount=",self.data.shape[0],"(",self.data.shape[0]/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
         print("self.data[:,:,1] min-max =",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
+        append_to_logfile("framecount="+str(self.data.shape[0]))
+        append_to_logfile("self.data[:,:,-1] min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
         if np.amin(self.data[:,:,-1])<0:
             print("z<0,error")
             return
@@ -1249,6 +1266,8 @@ class drawManeuver:
     
         indexprocessTime = time.time() - indexprocessTime
         print("\nProcessing complete.",round(indexprocessTime,2),"sec")
+        append_to_logfile("Processing complete."+str(round(indexprocessTime,2))+"sec")
+        
         # インデックスのリストとソートされたユニークな値を表示
         # for b, indices in zip(sorted_unique_array, t_index_lists):
         #     print(f"Value: {b}, Indices: {indices}")
@@ -1363,8 +1382,10 @@ class drawManeuver:
                         break
                 if len(render_array_column_sep)>=2:
                     print("done:",s+1,"(",k+1,"/",len(render_array_column_sep),")","/",separate_num)
+                    append_to_logfile("done:"+str(s+1)+"("+str(k+1)+"/"+str(len(render_array_column_sep))+")/"+str(separate_num)+"_"+str(round(knterval+Interval,2))+"sec")
                 else:
                     print("done:",s+1,"/",separate_num)
+                    append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+"_"+str(round(knterval+Interval,2))+"sec")
                 print("\r")
                 gc.collect()
         self.cap.release()
@@ -1401,6 +1422,8 @@ class drawManeuver:
         runOverTime = time.time()
         lnterval = round(runOverTime-runFirstTime,2)
         print("All Done",lnterval,"sec")
+        append_to_logfile("All Done"+str(lnterval)+"sec")
+
 
 
     # 映像のレンダリング   2023.9/27 added　 sorted_unique_array から、インデックスリスト生成の段階で、最大値、最小値の範囲から効率よく抽出することをめざしている。
@@ -2772,6 +2795,11 @@ def addCsvHeader(d):
     d = np.vstack((np.array(column_header), d))
     d = np.vstack((d,np.array(column_footer)))
     return d
+
+#再生断面軌道の編集のログを出力。2023.10.19 added
+def append_to_logfile(text_to_append):
+        with open("maneuverlog.txt", "a") as file:
+            file.write(text_to_append + "\n")
 
 if __name__ == '__main__':
     print("hello,ver=A")
