@@ -392,8 +392,9 @@ print(your_maneuver.data.shape)
 
 ### 全クラスメソッドのリスト:
 - [`__init__`](#__init__): ビデオパスを受け取り初期化する。
-- [`append`](#append): 別で作成していた軌道データをインスタンス変数としてもつ軌道データの後ろに追加する。
-- [`prepend`](#prepend): 別で作成していた軌道データを、インスタンス変数としてもつ軌道データの先頭にmaneuverを追加する。
+- [`append`](#append): 別で作成していた軌道データを`data`の後ろに追加する。
+- [`prepend`](#prepend): 別で作成していた軌道データを、`data`の先頭にmaneuverを追加する。
+- [`arrayExtract`]:  引数で指定された `start` と `end` から、その範囲の配列を `data` から抽出して `data` を書き換える。
 - 軌道デザインに関わるクラス
     - 時空間統合的な動きを加える関数
         - [`addFlat`](#addFlat): フラットな配列を追加。
@@ -422,6 +423,8 @@ print(your_maneuver.data.shape)
         - [`applyTimeFlowKeepingExtend`](#applyTimeFlowKeepingExtend): 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。`fade`引数をTrueでスピード０に落ち着かせる。
         - [`applyTimeLoop`](#applyTimeLoop): 与えた軌道配列全体の時間を前半、順方向、後半、逆転して、最後にまた順方向へながれ、最初と終わりの時間差がない。そのままループ再生すればシームレスなループが作られる。デフォルト周波数２hzでしか現在対応できていない。
         - [`applyTimeClip`](#applyTimeClip): 指定したスリットの時間の流れを指定した時間に固定する。
+        - [`applyTimebySpace`](#aapplyTimebySpace): スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。mean_mode=1でself.cycle_axisを参照する。mean_mode=2で、スリット空間位置の平均に対して計算する。
+        - [`applyTimebyKeyframetoSpace`](#applyTimebyKeyframetoSpace):スリットの空間位置に応じて、キーフレームで指定したフレーム数分、時間方向へずらす。mean_mode=1でself.cycle_axisを参照する。mean_mode=2で、スリット空間位置の平均に対して計算する。
         - [`applyTimeSlide`](#applyTimeSlide): 一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
         - [`applyInOutGapFix`](#applyInOutGapFix): シームレスループ作成のための補助的な関数。最初と最終フレームの差分を計算し、必要に応じてフレームの調整を行う。
         - [`applyTimebySpace`](#applytimebyspace):スリットの空間位置に応じて、最大`v`で指定したフレーム数分、時間方向へずらす。

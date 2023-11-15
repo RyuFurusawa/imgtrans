@@ -382,9 +382,9 @@ print(your_maneuver.data.shape)
 
 ### List of All Class Methods:
 - [`__init__`](#__init__): Initializes by receiving the video path.
-- [`append`](#append): Appends the maneuver data created separately to the end of the maneuver data held as an instance variable.
-- [`prepend`](#prepend): Adds a maneuver to the beginning of the maneuver data held as an instance variable, which was created separately.
-
+- [`append`](#append): Appends the maneuver data created separately to the end of `data` held as an instance variable.
+- [`prepend`](#prepend): Adds a maneuver to the beginning of `data` held as an instance variable, which was created separately.
+- [`arrayExtract`]: The `start` and `end` points set in the arguments, extract an array of that range from `data` and rewrite `data`.
 - **Classes related to maneuver design**
     - **Functions that add space-time integrated motion**
         - [`addFlat`](#addflat): Adds a flat array.
@@ -412,6 +412,8 @@ print(your_maneuver.data.shape)
         - [`applyTimeFlowKeepingExtend`](#applytimeflowkeepingextend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
         - [`applyTimeLoop`](#applytimeloop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
         - [`applyTimeClip`](#applytimeclip): Fix the time flow of specified slits to a specific time.
+        - [`applyTimebySpace`](#aapplyTimebySpace): shift the slit in the time direction by up to the number of frames specified by `v`, depending on the spatial position of the slit. mean_mode=1 refers to self.cycle_axis. mean_mode=2, Compute for the mean of the slit space position.
+        - [`applyTimebyKeyframetoSpace`](#applyTimebyKeyframetoSpace): Shift the slit in the time direction by the number of frames specified by the keyframe according to the spatial position of the slit. mean_mode=2, it is calculated with respect to the average of the slit spatial position.
         - [`applyTimeSlide`](#applytimeslide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
         - [`applyInOutGapFix`](#applyinoutgapfix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
         - [`applyTimebySpace`](#applytimebyspace):Depending on the spatial position of the slit, the number of frames specified by `v` is shifted in the time direction as the maximum value.
