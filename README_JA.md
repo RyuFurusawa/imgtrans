@@ -459,14 +459,14 @@ print(your_maneuver.data.shape)
 
 ### 引数
 - `frame_nums`(int): 追加するフレーム数。
-- `end_line`(float, optional, default: `1`): 変換の終了ライン。
 - `start_line`(float, optional, default: `0`): 変換の開始ライン。
+- `end_line`(float, optional, default: `1`): 変換の終了ライン。
 - `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
 - `zd`(bool, optional, default: `True`): 方向設定。
 
 ### 使用例
 ```python
-your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
+your_object.addTrans(100, start_line=0, end_line=1, speed_round=True, zd=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
@@ -526,7 +526,8 @@ bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
 - `interporation_direction`(int): インターポレーションの方向。
 - `z_direction`(int): Z方向におけるインターポレーションの方向。
 - `axis_position`(int): 回転やインターポレーションの中心となる位置。
-- `reversal`(int, optional, default: `0`): 動きの反転を制御する。
+- `s_reversal`(int, optional, default: `False`): 空間次元の反転
+- `z_reversal`(int, optional, default: `False`): 時間次元の反転
 - `cycle_degree`(int, optional, default: `90`): 1サイクルあたりの角度。
 - `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
 - `zslide`(int, optional, default: `0`): Z方向のスライド量。
@@ -535,11 +536,11 @@ bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
 
 ### 使用例
 ```python
-your_object.addInterpolation(100, 0, 0, 0,reversal=False)
+your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD0-AP0-REV0)_3dPlot.gif)
 ```python
-your_object.addInterpolation(100, 0, 1, 1,reversal=True)
+your_object.addInterpolation(100, 0, 1, 1,s_reversal=True,z_reversal=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
 
@@ -624,7 +625,7 @@ your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=Tru
 
 
 ## `transprocess`
-このメソッドは映像のレンダリングを行います。
+映像のレンダリングを行います。
 
 ### 引数
 - `separate_num` (int, optional, default: `1`): レンダリングを何分割で行うかの指定。
@@ -633,7 +634,8 @@ your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=Tru
 - `out_type` (int, optional, default: `1`): 出力形式の指定。`1`は映像、`0`は静止画、`2`は映像と静止画両方。
 - `XY_TransOut` (bool, optional, default: `False`): Trueの場合、出力映像を90度回転して保存。
 - `render_mode` (int, doptional, default: `0`): レンダリングモード。`0`は全軌道データのフレームを統合して出力。`1`は`sep_start_num` から `sep_end_num` までの範囲だけを出力。
-
+- `seqrender` (bool, optional, default: `False`):一度入力の映像データをnpyシーケンスに変換する。
+- `title_atr` (str,optional,default: `None`):出力する映像ファイル名に文字列を追加。
 ### 使用例
 ```python
 # インスタンスを作成

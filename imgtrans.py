@@ -21,6 +21,7 @@ import librosa.display
 import pickle #transprocess_typeBにてタプル型の保存に必要
 from scipy.interpolate import splrep, splev, interp1d #スプライン補完で使用
 from scipy.special import comb
+import re #正規表現（Regular Expressions）を扱うためのモジュール
 # import numexpr as ne
 
 class drawManeuver:
@@ -35,7 +36,7 @@ class drawManeuver:
     audio_form_out = False
     embedHistory_intoName = True
 
-    def __init__(self,videopath:str,sd:bool,datapath:str=None,foldername_attr:str=None,image_sequence_folder: str = None):
+    def __init__(self,videopath:str,sd:bool,datapath:str=None,foldername_attr:str=None):
         self.VIDEO_PATH = videopath
         self.ORG_NAME= videopath.split(".")[0].rsplit("/",1)[-1]
         self.ORG_PATH= videopath.split(".")[0].rsplit("/",1)[0]
@@ -686,10 +687,11 @@ class drawManeuver:
         else : 
             return
     
-    def dataCheck(self):    
+    def dataCheck(self):
+        print(sys._getframe().f_code.co_name)
         print("data.shape = ",self.data.shape)
-        print("Reference_Space(data[:,:,1]) min-max = ",np.amin(self.data[:,:,0]),np.amax(self.data[:,:,0]))
-        print("Reference_Time(data[:,:,2]) min-max = ",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
+        print("Reference_Space(data[:,:,0]) min-max = ",np.amin(self.data[:,:,0]),np.amax(self.data[:,:,0]))
+        print("Reference_Time(data[:,:,1]) min-max = ",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
 
     #軌道配列の中で、時間座標が負の値になっていないかチェックして、負の値になっている場合、最小値を０になるように全体に対してスライドさせて調節する。
     def zPointCheck(self,subtract_count=0):    
@@ -716,6 +718,7 @@ class drawManeuver:
                     add_attr+="_timeScaling"+str(scale_rate)
             self.maneuver_log(add_attr)
         else : print("check ok!!!")
+
      #一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。
     def applyTimeSlide(self,setframe:int,baseframe:int=0):    
         print(sys._getframe().f_code.co_name)
@@ -723,6 +726,7 @@ class drawManeuver:
         self.data[:,:,1]+=deff
         print("zp range-調整後:",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(baseframe)+"->"+str(setframe))
+        
     #シームレスループ作成のための補助的な関数。"addLoopSlidetime"の方が改善すれば、この関数は不要。
     #最初と最終フレームの差分を計算して、差分があれば、差分を埋め合わせるように、全てのフレームにたいして、調整する。
     def applyInOutGapFix(self):
@@ -1141,14 +1145,13 @@ class drawManeuver:
         video.release()
 
     def data_save(self):
-        np.save(self.ORG_NAME+"_"+self.out_name_attr+'_trans-raw-array.npy',self.data)
+        np.save(self.ORG_NAME+"_"+self.out_name_attr+'_raw.npy',self.data)
 
 
 
 
     # 映像のレンダリング
-    def transprocess(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False):
-        append_to_logfile("transprocess:"+str(separate_num))
+    def transprocess(self,separate_num=1,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False,title_atr:str=None):
         #self.outfpsはグローバルで定義
         if sep_end_num == None:sep_end_num = separate_num
         runFirstTime = time.time()
@@ -1156,11 +1159,14 @@ class drawManeuver:
         videostr = self.ORG_NAME+"_"+self.out_name_attr if render_mode == 0 else self.ORG_NAME+"_"+self.out_name_attr+"("+str(sep_start_num)+"-"+str(sep_end_num)+"sep)"
         if self.embedHistory_intoName == False :
             videostr = self.ORG_NAME+"_process"+str(self.log)
+        if title_atr != None : videostr+=title_atr
+        append_to_logfile("transprocess:"+str(separate_num)+"_"+videostr)
         rotate_direction = False
         print("framecount=",self.data.shape[0],"(",self.data.shape[0]/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
-        print("self.data[:,:,-1] min-max =",np.amin(self.data[:,:,-1]),np.amax(self.data[:,:,-1]))
+        print("z min-max =",np.amin(self.data[:,:,-1]),np.amax(self.data[:,:,-1]))
+        append_to_logfile("outfps="+str(self.outfps))
         append_to_logfile("framecount="+str(self.data.shape[0]))
-        append_to_logfile("self.data[:,:,-1] min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
+        append_to_logfile("z min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
         if np.amin(self.data[:,:,-1])<0:
             print("z<0,error")
             return
@@ -1505,8 +1511,9 @@ class drawManeuver:
         rotate_direction = False
         print("framecount=",self.data.shape[0],"(",self.data.shape[0]/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
         print("self.data[:,:,1] min-max =",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
+        append_to_logfile("outfps="+str(self.outfps))
         append_to_logfile("framecount="+str(self.data.shape[0]))
-        append_to_logfile("self.data[:,:,-1] min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
+        append_to_logfile("z min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
         if np.amin(self.data[:,:,-1])<0:
             print("z<0,error")
             return
@@ -2311,11 +2318,11 @@ class drawManeuver:
         print("All Done",lnterval,"sec")
 
     # dataに新たな軌跡を加えて返す関数
-    def addInterpolation(self,frame_nums,interporation_direction,z_direction,axis_position,reversal=0,cycle_degree=90,extra_degree=0,zslide=0,speed_round = True,rrange=[0,1]):
-        self.interpolation(frame_nums,interporation_direction,z_direction,axis_position,reversal,cycle_degree,extra_degree,zslide,speed_round,rrange) 
-        self.maneuver_log("+IP"+str(frame_nums)+"(ID"+str(interporation_direction)+"-ZD"+str(z_direction)+"-AP"+str(axis_position)+"-REV"+str(reversal)+")")
+    def addInterpolation(self,frame_nums,interporation_direction,z_direction,axis_position,s_reversal=0,z_reversal=0,cycle_degree=90,extra_degree=0,zslide=0,speed_round = True,rrange=[0,1]):
+        self.interpolation(frame_nums,interporation_direction,z_direction,axis_position,s_reversal,z_reversal,cycle_degree,extra_degree,zslide,speed_round,rrange) 
+        self.maneuver_log("+IP"+str(frame_nums)+"(ID"+str(interporation_direction)+"-ZD"+str(z_direction)+"-AP"+str(axis_position)+"-SREV"+str(s_reversal)+"-ZREV"+str(z_reversal)+")")
 
-    def interpolation(self,frame_nums,interporation_direction,z_direction,axis_position,reversal=0,cycle_degree=90,extra_degree=0,zslide=0,speed_round = True,rrange=[0,1]):
+    def interpolation(self,frame_nums,interporation_direction,z_direction,axis_position,s_reversal=0,z_reversal=0,cycle_degree=90,extra_degree=0,zslide=0,speed_round = True,rrange=[0,1]):
         wr_array= [] 
         print("sd=",self.scan_direction)
         for i in range(0,frame_nums):
@@ -2334,26 +2341,28 @@ class drawManeuver:
                         y=(self.height-1)-y
                         zcos=math.cos(crad)
                         ysin=math.sin(crad)
-                    if reversal : 
+                    if s_reversal : 
                         pernum=y/(self.height-1) if axis_position == 1 else 1.0-y/(self.height-1)
                     else :
                         pernum=y/(self.height-1) if axis_position == 0 else 1.0-y/(self.height-1)
-                    yp = zcos*(self.height-1)*pernum if interporation_direction == 0  else ysin*(self.height-1)*pernum #回転中心点をx＝０か,x＝3840
+                    yp = zcos*(self.height-1)*pernum if interporation_direction == 0  else ysin*(self.height-1)*pernum #回転中心点をy＝０か,y＝2160
                     if axis_position:
                         if z_direction:
-                            pernum = y/(self.height-1) if reversal == 1 else 1.0-y/(self.height-1)
+                            pernum = y/(self.height-1) if z_reversal == 1 else 1.0-y/(self.height-1)
+                            # pernum = y/(self.height-1) 
                             zp = ysin*(self.height-1)*pernum if interporation_direction == 0  else zcos*(self.height-1)*pernum
                             zp = int(self.height-1) - zp
                         else : 
-                            pernum = y/(self.height-1) if reversal == 1 else 1.0-y/(self.height-1)
+                            pernum = y/(self.height-1) if z_reversal == 1 else 1.0-y/(self.height-1)
                             zp = ysin*(self.height-1)*pernum if interporation_direction == 0  else zcos*(self.height-1)*pernum
                     else :  
                         if z_direction:
-                            pernum=y/(self.height-1) if reversal == 0 else 1.0-y/(self.height-1)
+                            pernum=y/(self.height-1) if z_reversal == 0 else 1.0-y/(self.height-1)
+                            # pernum=1.0-y/(self.height-1)
                             zp = ysin*(self.height-1)*pernum if interporation_direction == 0  else zcos*(self.height-1)*pernum
                             zp = int(self.height-1) - zp
                         else : 
-                            pernum=y/(self.height-1) if reversal == 0 else 1.0-y/(self.height-1)
+                            pernum=y/(self.height-1) if z_reversal == 0 else 1.0-y/(self.height-1)
                             zp = ysin*(self.height-1)*pernum if interporation_direction == 0  else zcos*(self.height-1)*pernum
                     if sequence%2==1:
                         yp=yp*-1 #負の値になっているので、正の値に戻す
@@ -2367,7 +2376,7 @@ class drawManeuver:
                         x=(self.width-1)-x
                         zcos=math.cos(crad)
                         ysin=math.sin(crad)
-                    if reversal : 
+                    if s_reversal : 
                         pernum=x/(self.width-1) if axis_position == 1 else 1.0-x/(self.width-1) 
                     else :
                         pernum=x/(self.width-1) if axis_position == 0 else 1.0-x/(self.width-1) 
@@ -2375,19 +2384,19 @@ class drawManeuver:
 
                     if axis_position:
                         if z_direction:
-                            pernum=x/(self.width-1) if reversal == 1 else 1.0-x/(self.width-1)
+                            pernum=x/(self.width-1) if z_reversal == 1 else 1.0-x/(self.width-1)
                             zp = ysin*(self.width-1)*pernum if interporation_direction == 0  else zcos*(self.width-1)*pernum
                             zp = int(self.width-1) - zp
                         else : 
-                            pernum=x/(self.width-1) if reversal == 1 else 1.0-x/(self.width-1)
+                            pernum=x/(self.width-1) if z_reversal == 1 else 1.0-x/(self.width-1)
                             zp = ysin*(self.width-1)*pernum if interporation_direction == 0  else zcos*(self.width-1)*pernum
                     else :  
                         if z_direction:
-                            pernum=x/(self.width-1) if reversal == 0 else 1.0-x/(self.width-1)
+                            pernum=x/(self.width-1) if z_reversal == 0 else 1.0-x/(self.width-1)
                             zp = ysin*(self.width-1)*pernum if interporation_direction == 0  else zcos*(self.width-1)*pernum
                             zp = int(self.width-1) - zp
                         else : 
-                            pernum=x/(self.width-1) if reversal == 0 else 1.0-x/(self.width-1)
+                            pernum=x/(self.width-1) if z_reversal == 0 else 1.0-x/(self.width-1)
                             zp = ysin*(self.width-1)*pernum if interporation_direction == 0  else zcos*(self.width-1)*pernum
                     if sequence%2==1:
                         xp=xp*-1 #負の値になっているので、正の値に戻す
@@ -2459,7 +2468,7 @@ class drawManeuver:
         self.interpolation(FRAME_NUMS,interporation_direction=1,z_direction=0,axis_position=0,reversal=0,zslide=0,speed_round = True)
 
     # wr_arrayに新たなTrans（）の軌跡を加えて返す関数    
-    def addTrans(self,frame_nums,end_line=1,start_line=0,speed_round = True,zd=True):
+    def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True):
         if len(self.data) != 0 : 
             extra_array = np.zeros((self.data.shape[0]+frame_nums,self.scan_nums,2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
             extra_array[0:self.data.shape[0]] = self.data
@@ -2649,14 +2658,14 @@ class drawManeuver:
         if os.path.isdir(NPATH)==False:
             os.makedirs(NPATH)#ディレクトリ作成
         os.chdir(NPATH)
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array.npy',self.data)
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_L.npy',self.data[:,:self.width,:])
+        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_raw.npy',self.data)
+        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_raw_L.npy',self.data[:,:self.width,:])
         new_array=self.data[:,self.width:self.width*2,:]
         new_array[:,:,0]-=self.width
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_C.npy',new_array)
+        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_raw_C.npy',new_array)
         new_array=self.data[:,self.width*2:,:]
         new_array[:,:,0]-=self.width*2
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_R.npy',new_array)
+        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_raw_R.npy',new_array)
         print(self.data[:,:self.width,:].shape)
         print(self.data[:,self.width:self.width*2,:].shape)
         print(self.data[:,self.width*2:,:].shape)
@@ -2669,25 +2678,26 @@ class drawManeuver:
     # 3分割したNPYファイルのパスを配列で返す。
     def split_3_npysavereturn(self):
         #ディレクトリ作成、そのディデクトリに移動
-        NPATH = self.ORG_PATH+"/"+self.ORG_NAME+"_"+self.out_name_attr
-        if os.path.isdir(NPATH)==False:
-            os.makedirs(NPATH)#ディレクトリ作成
-        os.chdir(NPATH)
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array.npy',self.data)
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_L.npy',self.data[:,:self.width,:])
-        new_array=self.data[:,self.width:self.width*2,:]
-        new_array[:,:,0]-=self.width
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_C.npy',new_array)
-        new_array=self.data[:,self.width*2:,:]
-        new_array[:,:,0]-=self.width*2
-        np.save(self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_R.npy',new_array)
-        print(self.data[:,:self.width,:].shape)
-        print(self.data[:,self.width:self.width*2,:].shape)
-        print(self.data[:,self.width*2:,:].shape)
+        # NPATH = self.ORG_PATH+"/"+self.ORG_NAME+"_"+self.out_name_attr
+        # if os.path.isdir(NPATH)==False:
+        #     os.makedirs(NPATH)#ディレクトリ作成
+        # os.chdir(NPATH)
+        np.save(self.ORG_NAME+'_raw.npy',self.data)
+        np.save(self.ORG_NAME+'_raw_L.npy',self.data[:,:int(self.width),:])
+        new_array=self.data[:,int(self.width):int(self.width*2),:]
+        # new_array[:,:,0]-=self.width
+        np.save(self.ORG_NAME+'_raw_C.npy',new_array)
+        new_array=self.data[:,int(self.width*2):,:]
+        # new_array[:,:,0]-=self.width*2
+        np.save(self.ORG_NAME+'_raw_R.npy',new_array)
+        print(self.data[:,:int(self.width),:].shape)
+        print(self.data[:,int(self.width):int(self.width*2),:].shape)
+        print(self.data[:,int(self.width*2):,:].shape)
         self.data=None
         new_array=None
         gc.collect()
-        return [self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_L.npy',self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_C.npy',self.ORG_NAME+"_"+self.out_name_attr +'_trans-raw-array_R.npy']
+        current_directory = os.getcwd()
+        return [current_directory +"/"+self.ORG_NAME+'_raw_L.npy',current_directory +"/"+self.ORG_NAME+'_raw_C.npy',current_directory +"/"+self.ORG_NAME+'_raw_R.npy']
 
     # 時間と空間のピクセルのマトリクスに対して、動的な波の形状により再生断面を得る。空間軸を固定するか否かの切り替えも可能
     def addWaveTrans(self,frame_nums,cycle_degree,zdepth,flow=True,zslide=0,speed_round = True):
@@ -2785,6 +2795,7 @@ class drawManeuver:
         self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(cycle_degree)+"deg-zscale"+str(zscaling)+"-"+str(frame_nums)+"f"+spf_attr)
 
     # 回転の中心軸を漸次的に変化させる
+    #extradegree=90,180,270などの設定の時に、初期値（i=0）が数値が飛ぶ。i=0のときに、うまくshift_num=0で始まってi=1のときにshift_num=1にするようにしたいが、いろいろ調整が難しそう。現状90.1あるいは89などの数値をextradegreeにはめてあげると解決策になる
     def addCustomCycleTrans(self,frame_nums,cycle_degree,start_center=1/2,end_center=1/2,zscaling=False,extra_degree=0,speed_round = True,zslide=0,auto_zslide=True,zscaling_v=0.9):
         print(sys._getframe().f_code.co_name)
         permit_auto_zslide=False
@@ -2826,7 +2837,7 @@ class drawManeuver:
                 for y in range(0,int(self.height)):
                     pernum=(y-(ycenter))/self.height if ccos > 0 else (y-(self.height-ycenter))/self.height #yのズレのための計算,ccosが90度を超えるとはみ出てしまう問題の解消
                     yp = ycenter + ccos * (self.height-1) * pernum
-                    if permit_auto_zslide : zslide=self.data[-1:y:2]
+                    if permit_auto_zslide : zslide=self.data[-1:y:1]
                     zp=zslide -csin*maxz*pernum - ((y-ycenter)+((self.height-y)-ycenter))*shift_num * maxz/self.height #反転するごとにZのズレを補正していく
                     # if shift_num>0:print(((y-ycenter)+((self.height-y)-ycenter))*shift_num )
                     yp = sorted([0, yp, self.height-1])[1]
@@ -2838,13 +2849,14 @@ class drawManeuver:
                     pernum=(x-(xcenter))/self.width if ccos > 0 else  (x-(self.width-xcenter))/self.width #xのズレのための計算,ccosが90度を超えるとはみ出てしまう問題の解消
                     xp = xcenter + ccos * (self.width-1) * pernum
                     if permit_auto_zslide : zslide=self.data[-1,x,1]
-                    zp = zslide-csin*maxz*pernum-((x-xcenter)+((self.width-x)-xcenter))*shift_num * maxz/self.width #反転するごとにZのズレを補正していく
+                    zp = zslide-csin*maxz*pernum-((x-xcenter)+((self.width-x)-xcenter))* shift_num * maxz/self.width #反転するごとにZのズレを補正していく
                     # if shift_num>0:print(((x-xcenter)+((self.width-x)-xcenter))*shift_num )
                     xp = sorted([0, xp, self.width-1])[1]
                     write_array.append([xp,zp])
                     # if x == 0 : 
-                    #     print(i,(x-(xcenter))/self.width,pernum,ccos,xcenter,(x-(self.width-xcenter))/self.width)
+                        # print(i,(x-(xcenter))/self.width,pernum,ccos,xcenter,(x-(self.width-xcenter))/self.width)
                         # print(i,x,zp,maxz/self.width,shift_num,zslide,pernum,self.width/2-xcenter,((x-xcenter)+((self.width-x)-xcenter)))
+                        # print(i,zp,shift_num,zslide,pernum,(ccos > 0), ccos,zslide-csin*maxz*pernum,((x-xcenter)+((self.width-x)-xcenter))* shift_num * maxz/self.width)
             write_array = np.array(write_array)
             wr_array.append(write_array)
             self.cycle_axis.append(xcenter)
@@ -2885,7 +2897,7 @@ class drawManeuver:
         
         self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(cycle_degree)+"-zscale"+str(zscaling)+"_"+str(start_center)+"->"+str(end_center))
     #中心外を、エッジのスリットに時間差をつけて表示する。回転の中心軸を漸次的に変化させる
-    def addWideCustomCycleTrans(self,frame_nums,cycle_degree,maxz_range,start_center,end_center,wide_scale=3,zscaling=False,extra_degree=0,speed_round = True):
+    def addWideCustomCycleTrans(self,frame_nums,cycle_degree,start_center,end_center,maxz_range=None,wide_scale=3,zscaling=False,extra_degree=0,speed_round = True):
         print(sys._getframe().f_code.co_name)
         wr_array=[]
         defcenter=end_center-start_center
@@ -2894,6 +2906,9 @@ class drawManeuver:
         csin_array=[]
         zscale_array=[]
         zp_array=[]
+        if maxz_range==None : 
+            maxz_range = self.count
+        
         shift_num=int(extra_degree/90)#反転する回数を記録
         for i in range(0,frame_nums):
             crad = math.radians(extra_degree)+math.radians(cycle_degree)* i / (frame_nums-1) if speed_round == False else math.radians(extra_degree)+math.radians(cycle_degree)*(1-(math.cos(math.radians(i/(frame_nums-1)*180))+1.0)/2)
@@ -3235,6 +3250,68 @@ def save_video_frames(video_path, img_format='jpg',frame_array=None):
     print(f"\nTotal {frame_count} frames saved.")
     # 新しく作成したディレクトリのパスを返す
     return output_folder
+
+def convert_npy_to_jpg(npy_file_path, output_folder):
+    # Numpy ファイルを読み込む
+    data = np.load(npy_file_path)
+    
+    # 出力ファイル名を作成（拡張子を .jpg に変更）
+    output_file_name = npy_file_path.split('/')[-1].replace('.npy', '.jpg')
+    output_path = f"{output_folder}/{output_file_name}"
+    
+    # BGR 形式に変換して JPG として保存
+    cv2.imwrite(output_path, cv2.cvtColor(data, cv2.COLOR_RGB2BGR))
+    
+    return output_path
+
+def extract_number(filename):
+    # ファイル名から連番部分を抽出
+    match = re.search(r'_(\d+)\.npy$', filename)
+    return int(match.group(1)) if match else -1
+
+def convert_npys_to_video(input_folder, output_folder, fps=30):
+    # 指定フォルダ内のすべての .npy ファイルを取得し、連番でソート
+    npy_files = sorted(glob.glob(os.path.join(input_folder, '*.npy')), key=extract_number)
+
+    # 指定フォルダ内の最初の .npy ファイルを取得
+    first_npy_file = next(glob.iglob(os.path.join(input_folder, '*.npy')), None)
+    if not first_npy_file:
+        raise ValueError("No .npy files found in the specified folder.")
+
+    # 最初のファイルから解像度を取得
+    first_frame = np.load(first_npy_file)
+    resolution = (first_frame.shape[1], first_frame.shape[0])
+
+    # 出力ファイルパスを設定
+    # output_path = os.path.join(input_folder, output_file)
+    # 出力ファイル名を作成（拡張子を .jpg に変更）
+    output_path = f"{output_folder}/tmp.mp4"
+
+    # 映像ファイルのライターを初期化
+    fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
+    video_writer = cv2.VideoWriter(output_path, fourcc, fps, resolution)
+
+    # 指定フォルダ内のすべての .npy ファイルを取得
+    total_files = len(npy_files)
+    # print(npy_files)
+
+    for index, file in enumerate(npy_files):
+        # Numpy ファイルを読み込む
+        frame = np.load(file)
+
+        # 映像にフレームを追加
+        video_writer.write(frame)
+
+        # 進捗を表示
+        progress = (index + 1) / total_files * 100
+        print(f"Processing {index + 1}/{total_files} ({progress:.2f}%)")
+
+
+    # ライターを閉じる
+    video_writer.release()
+
+    return output_path
+
 
 if __name__ == '__main__':
     print("hello,ver=A")

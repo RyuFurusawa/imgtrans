@@ -447,14 +447,14 @@ The `addTrans` method is a function to add a new trans maneuver trace to `wr_arr
 
 ### Parameters
 - `frame_nums`(int): Number of frames to add.
-- `end_line`(float, optional, default: `1`): Transformation's end line.
 - `start_line`(float, optional, default: `0`): Transformation's starting line.
+- `end_line`(float, optional, default: `1`): Transformation's end line.
 - `speed_round`(bool, optional, default: `True`): Specifies whether the speed is smooth or not.
 - `zd`(bool, optional, default: `True`): Direction setting.
 
 ### Usage Example
 ```python
-your_object.addTrans(100, end_line=1, start_line=0, speed_round=True, zd=True)
+your_object.addTrans(100, start_line=0, end_line=1, speed_round=True, zd=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
@@ -514,7 +514,8 @@ The `interpolation` method is based on the specified maneuver data to perform in
 - `interporation_direction`(int): Direction of interpolation.
 - `z_direction`(int): Direction of interpolation in the Z axis.
 - `axis_position`(int): Central position for rotation and interpolation.
-- `reversal`(int, optional, default: `0`): Controls the reversal of motion.
+- `s_reversal`(int, optional, default: `0`): Reversal of spatial dimension.
+- `z_reversal`(int, optional, default: `0`): Reversal of time dimension.
 - `cycle_degree`(int, optional, default: `90`): Angle per cycle.
 - `extra_degree`(int, optional, default: `0`): Specifies the sectional angle at the initial stage of transformation.
 - `zslide`(int, optional, default: `0`): Amount of slide in the Z direction.
@@ -523,11 +524,11 @@ The `interpolation` method is based on the specified maneuver data to perform in
 
 ### Usage
 ```python
-your_object.addInterpolation(100, 0, 0, 0,reversal=False)
+your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD0-AP0-REV0)_3dPlot.gif)
 ```python
-your_object.addInterpolation(100, 0, 1, 1,reversal=True)
+your_object.addInterpolation(100, 0, 1, 1,s_reversal=True,z_reversal=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
 
@@ -624,7 +625,8 @@ This method performs video rendering.
 - `out_type` (int, optional, default: `1`): Specifies the output format. `1` is video, `0` is a still image, and `2` is both video and still image.
 - `XY_TransOut` (bool, optional, default: `False`): If True, saves the output video rotated by 90 degrees.
 - `render_mode` (int, doptional, default: `0`): Rendering mode. `0` outputs all frames of the maneuver data integrated. `1` outputs only from `sep_start_num` to `sep_end_num`.
-
+- `seqrender` (bool, optional, default: `False`):This mode converts the input video data once into npy sequences before rendering. The longer the video data, the faster the rendering will be exported. However, be aware that it consumes hard disk space.
+- `title_atr` (str, optional, default: `None`):Append a string to the output video filename.
 ### Usage
 ```python
 # Create an instance
