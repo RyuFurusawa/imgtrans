@@ -350,6 +350,7 @@ The class initialization method takes the attributes of the video path, scan dir
 #### Parameters
 - `videopath` (str): Path to the video file.
 - `sd` (bool): Direction of the slit. `True` for vertical slit, `False` for horizontal slit.
+- `outdir` (str, optional): Directory indication of the output folder. Default is the same as the input video data path.
 - `datapath` (str, optional): Optional path to previously saved maneuver data, saved as a multi-dimensional array in npy format.
 - `foldername_attr` (str, optional): Optionally appends the specified name to the output directory's name.
 
@@ -511,16 +512,23 @@ The `interpolation` method is based on the specified maneuver data to perform in
 
 ### Parameters
 - `frame_nums`(int): Number of frames to add.
-- `interporation_direction`(int): Direction of interpolation.
-- `z_direction`(int): Direction of interpolation in the Z axis.
-- `axis_position`(int): Central position for rotation and interpolation.
-- `s_reversal`(int, optional, default: `0`): Reversal of spatial dimension.
-- `z_reversal`(int, optional, default: `0`): Reversal of time dimension.
+- `i_direction`(bool): Direction of interpolation.
+- `z_direction`(bool): Direction of interpolation in the Z axis.
+- `axis_position`(bool): Central position for rotation and interpolation.
+- `s_reversal`(bool, optional, default: `0`): Reversal of spatial dimension.
+- `z_reversal`(bool, optional, default: `0`): Reversal of time dimension.
 - `cycle_degree`(int, optional, default: `90`): Angle per cycle.
 - `extra_degree`(int, optional, default: `0`): Specifies the sectional angle at the initial stage of transformation.
 - `zslide`(int, optional, default: `0`): Amount of slide in the Z direction.
 - `speed_round`(bool, optional, default: `True`): Specifies if the speed is smooth.
 - `rrange`(list of int, optional, default: `[0,1]`): List specifying the range of transformation.
+
+| Parameters | i_direction                                     | z_direction                               | Axis_position                            | s_reversal                               | z_reversal                               |
+|---------------|-------------------------------------------------|-------------------------------------------|------------------------------------------|------------------------------------------|------------------------------------------|
+| Type          | Bool                                            | Bool                                      | Bool                                     | Bool                                     | Bool                                     |
+| Content       | Direction of transition                        | Direction of rotation relative to time dimension | Whether the axis is at the end or the beginning | Reversal of spatial direction             | Reversal of time direction               |
+| Description   | <ul><li>False / (TY-X) -> (XY-T)</li><li>True / (XY-T) -> (TY-X)</li></ul> | <ul><li>False / Forward</li><li>True / Reverse</li></ul> | <ul><li>False / Start</li><li>True / End</li></ul> | <ul><li>False / No reversal</li><li>True / Reverse</li></ul> | <ul><li>False / No reversal</li><li>True / Reverse</li></ul> |
+
 
 ### Usage
 ```python

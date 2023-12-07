@@ -354,6 +354,7 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 #### 引数
 - `videopath` (str): ビデオファイルへのパス。
 - `sd` (bool): スリットの方向。`True`で縦スリット`False`で横スリット
+- `outdir` (str, optional): 出力フォルダのディレクトリの指示。デフォルトは入力の映像データのパスと同じ
 - `datapath` (str, optional): 以前に保存していた軌道データを引き継ぐ場合に使用するオプション。Numpyの多次元配列として保存されたnpyデータのパス。
 - `foldername_attr` (str, optional): オプションとして出力用のディレクトリの名称に、指定した名称を付け加えます。
 
@@ -523,16 +524,23 @@ bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
 
 ### 引数
 - `frame_nums`(int): 追加するフレーム数。
-- `interporation_direction`(int): インターポレーションの方向。
-- `z_direction`(int): Z方向におけるインターポレーションの方向。
-- `axis_position`(int): 回転やインターポレーションの中心となる位置。
-- `s_reversal`(int, optional, default: `False`): 空間次元の反転
-- `z_reversal`(int, optional, default: `False`): 時間次元の反転
+- `i_direction`(bool): インターポレーションの方向。
+- `z_direction`(bool): Z方向におけるインターポレーションの方向。
+- `axis_position`(bool): 回転やインターポレーションの中心となる位置。
+- `s_reversal`(bool, optional, default: `False`): 空間次元の反転
+- `z_reversal`(bool, optional, default: `False`): 時間次元の反転
 - `cycle_degree`(int, optional, default: `90`): 1サイクルあたりの角度。
 - `extra_degree`(int, optional, default: `0`): 変換を始める最初の段階での断面の角度の指定。
 - `zslide`(int, optional, default: `0`): Z方向のスライド量。
 - `speed_round`(bool, optional, default: `True`): 速度が円滑かどうかを指定。
 - `rrange`(list of int, optional, default: `[0,1]`): 変換の範囲を指定するリスト。
+
+| 引数名       | i_direction | z_direction | Axis_position | s_reversal | z_reversal |
+|------------|-------------------------|-------------|---------------|------------|------------|
+| 型          | Bool                    | Bool        | Bool          | Bool       | Bool       |
+| 内容        | 遷移の方向              | 時間次元に対しての回転方向 | 回転軸が末端か始端か | 空間方向を反転 | 時間方向を反転 |
+| 説明        | <ul><li>False / (TY-X) -> (XY-T)</li><li>True / (XY-T) -> (TY-X)</li></ul>  |  <ul><li>False / 順行</li><li>True / 逆行</li></ul>   | <ul><li>False /始端</li><li>True / 末端</li></ul>     | <ul><li>False / 反転なし</li><li>True/反転する</li></ul>  | <ul><li>False / 反転なし</li><li>True / 反転する</li></ul> |
+|            
 
 ### 使用例
 ```python
@@ -567,6 +575,10 @@ your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra
 [![Waves Etude [central v-axis rotation180 202209041744]](https://i.vimeocdn.com/video/1507673804-9e1d545fc365e48c6cb8d3bf5fdb7772843aaad792731d1537ba639806240d1e-d_640)](https://vimeo.com/749807843)
 
 [Click to watch on Vimeo](https://vimeo.com/749807843)
+
+## `addCustomCycleTrans`
+
+`addCycleTrans` の回転軸の位置を調整することができる。
 
 ### 引数
 - `frame_nums`(int): 追加するフレーム数。

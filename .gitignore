@@ -4,14 +4,6 @@
 /interpolation-index.py
 
 /imgtrans_soundout.scd 
-
-/test.py
-/test2.py
-/test3.py
-/test4.py
-/test5.py
-/test6.py
-/test15.py
 /DFT-test.py
 /FFT-test.py
 /all_maneuver_module_3dplotout
@@ -33,6 +25,12 @@
 /test copy.py
 /test2023-0518
 /test2023-0520
+/test.py
+/test2.py
+/test3.py
+/test4.py
+/test5.py
+/test6.py
 /test7.py
 /test8.py
 /test9.py
@@ -41,6 +39,13 @@
 /test12.py
 /test13.py
 /test14.py
+/test15.py
+/test16.py
+/test17.py
+/test17 copy.py
+/test17 copy 2.py
+/test17 copy 3.py
+/test.py
 /ttest.py
 
 /npy_to_info.py
