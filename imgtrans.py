@@ -32,7 +32,7 @@ class drawManeuver:
     recfps = 120
     progressbarsize=50
     sepVideoOut = 0 # セパレートしない場合、rawでnpアレイファイルをテンポファイルとしてハードディスクに貯めておき、全てのアレイが準備できてからレンダリングする。そのためHD容量を100GBとか普通に食う。
-    memory_percent = 100 #%
+    memory_percent = 60 #%
     auto_visualize_out = True
     default_debugmode = False
     audio_form_out = False
@@ -192,8 +192,8 @@ class drawManeuver:
         # conection_array = np.zeros([connection_num,self.scan_nums,2],dtype=np.float64)
         conection_array = np.zeros([connection_num,self.data.shape[1],2],dtype=np.float64)
         for i in range(connection_num):
-            conection_array[i,:,1] = self.data[-1,:,1]+(zslide/connection_num)*i if speed_round == False else self.data[-1,:,1]+zslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)
-            conection_array[i,:,0] = self.data[-1,:,0]+(sslide/connection_num)*i if speed_round == False else self.data[-1,:,0]+sslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)  
+            conection_array[i,:,1] = self.data[-1,:,1]+(zslide/connection_num)*i if (speed_round == False or connection_num==1) else self.data[-1,:,1]+zslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)
+            conection_array[i,:,0] = self.data[-1,:,0]+(sslide/connection_num)*i if (speed_round == False or connection_num==1) else self.data[-1,:,0]+sslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)  
         self.data = np.vstack((self.data,conection_array))
         if add_maneuver : self.data = np.vstack((self.data,maneuver))
         self.maneuver_log(sys._getframe().f_code.co_name)
@@ -206,8 +206,8 @@ class drawManeuver:
         connection_num = abs(int(np.mean(zslide/frame_speed)))
         conection_array = np.zeros([connection_num,self.data.shape[1],2],dtype=np.float64)
         for i in range(connection_num):
-            conection_array[i,:,1] = self.data[-1,:,1]+(zslide/connection_num)*i if speed_round == False else self.data[-1,:,1]+zslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)
-            conection_array[i,:,0] = self.data[-1,:,0]+(sslide/connection_num)*i if speed_round == False else self.data[-1,:,0]+sslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)  
+            conection_array[i,:,1] = self.data[-1,:,1]+(zslide/connection_num)*i if (speed_round == False or connection_num==1) else self.data[-1,:,1]+zslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)
+            conection_array[i,:,0] = self.data[-1,:,0]+(sslide/connection_num)*i if (speed_round == False or connection_num==1) else self.data[-1,:,0]+sslide*(1-(math.cos(math.radians((i/(connection_num-1))*180))+1.0)/2)  
         frame_sum = self.data.shape[0]
         connect_frame_sum = conection_array.shape[0]
         maneuver_frame_sum= maneuver.shape[0]
@@ -1300,7 +1300,7 @@ class drawManeuver:
         # Convert the file size to megabytes (1 MB = 1024 * 1024 bytes)
         file_size_megabytes = file_size_bytes / (1024 * 1024)
         if separate_num == None :
-            separate_num = math.ceil(file_size_megabytes // ((psutil.virtual_memory().available/(1024)**2)* (self.memory_percent/100)))
+            separate_num = math.ceil(file_size_megabytes /((psutil.virtual_memory().available/(1024)**2)* (self.memory_percent/100)))
         print("separate_num=",separate_num,"active memory=",(psutil.virtual_memory().available/(1024)**2),"mb")
         if sep_end_num == None:sep_end_num = separate_num
         runFirstTime = time.time()
