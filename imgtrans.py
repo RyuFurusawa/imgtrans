@@ -117,7 +117,7 @@ class drawManeuver:
         self.maneuver_log(sys._getframe().f_code.co_name)
     
     #added 2023 11/25
-    def wide_expand(self,add_size=300):
+    def wide_expand(self,add_size=300,sclip=True,zclip=True):
         # 2次元目にパディングを適用（左右に均等にパディングを追加）
         new_array = np.pad(self.data, ((0, 0), (add_size, add_size), (0, 0)), mode='constant')
         for i in range(self.data.shape[0]):
@@ -132,8 +132,8 @@ class drawManeuver:
                 new_array[i,add_size+self.data.shape[1]+k,0]=new_array[i,add_size+self.data.shape[1]+k-1,0]+rs_diff
                 new_array[i,add_size+self.data.shape[1]+k,1]=new_array[i,add_size+self.data.shape[1]+k-1,1]+rz_diff
                 # print(new_array[i,add_size-k,1],new_array[i,add_size+self.data.shape[1]+k,1])
-        new_array[:,:,0] = np.clip(new_array[:,:,0],0,self.scan_nums-1)
-        new_array[:,:,1] = np.clip(new_array[:,:,1],1,self.count-1)
+        if sclip : new_array[:,:,0] = np.clip(new_array[:,:,0],0,self.scan_nums-1)
+        if zclip : new_array[:,:,1] = np.clip(new_array[:,:,1],1,self.count-1)
         self.data = new_array
         self.maneuver_log(sys._getframe().f_code.co_name)
 
@@ -156,7 +156,7 @@ class drawManeuver:
         self.maneuver_log(sys._getframe().f_code.co_name)
 
     #added 2023 11/24 
-    def applyloopBlur(self,sblur,tblur):
+    def applyLoopBlur(self,sblur,tblur):
         array=self.data
         self.data= np.vstack((np.vstack((array,self.data)),array))
         if sblur > 0 : self.data[:,:,0]=cv2.blur(self.data[:,:,0],(1,int(sblur)))
@@ -165,7 +165,7 @@ class drawManeuver:
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+"s"+str(sblur)+"b"+str(tblur))
     
     #applyCustomeBlurの埋め込み
-    def applyConnectloopBlur(self,sblur,tblur,connect_frame=100):
+    def applyConnectLoopBlur(self,sblur,tblur,connect_frame=100):
         array=self.data
         self.data= np.vstack((np.vstack((array,self.data)),array))
         # print(self.data.shape)
@@ -183,7 +183,15 @@ class drawManeuver:
         self.data = self.data[array.shape[0]:array.shape[0]+array.shape[0],:,:]
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+"s"+str(sblur)+"b"+str(tblur))
     
-
+   #applyCustomeBlurの埋め込み added 2023 12/12
+    def applyPointBlur(self,point_frame,sblur,tblur,range_frame=100):
+        if tblur > 0 :
+            self.data = custom_blur(self.data,s_frame=point_frame-range_frame, e_frame=point_frame+range_frame, bl_time = tblur, dim_num=1)
+        if sblur > 0 :
+            self.data = custom_blur(self.data,s_frame=point_frame-range_frame, e_frame=point_frame+range_frame, bl_time = sblur, dim_num=0)
+        
+        self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+"s"+str(sblur)+"b"+str(tblur))
+    
     #added 2023 10/22
     #指定したフレーム数で保管する。保管するz距離に応じで速度が変わる。
     def interpolation_append(self,maneuver,connection_num,speed_round=False,add_maneuver=True):
@@ -443,37 +451,99 @@ class drawManeuver:
         self.data = extra_array
         self.maneuver_log(sys._getframe().f_code.co_name+str(addframe))
 
-    #時間の変化率を維持したまま、始まりと終わり部分を延長させる。fade引数をTrueでスピード０に落ち着かせる。
-    def timeFlowKeepingExtend(self,frame_nums:int,fade:bool=False):
+    # #時間の変化率を維持したまま、始まりと終わり部分を延長させる。fade引数をTrueでスピード０に落ち着かせる。
+    # def timeFlowKeepingExtend(self,frame_nums:int,fade:bool=False):
+    #     print(sys._getframe().f_code.co_name)
+    #     extra_array = np.zeros((self.data.shape[0]+frame_nums*2,self.data.shape[1],2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
+    #     xyfirstFrame = self.data[0,:,0]
+    #     xylastFrame = self.data[-1,:,0]
+    #     zfirstDiff = self.data[1,:,1]-self.data[0,:,1]
+    #     zlastDiff = self.data[-2,:,1]-self.data[-1,:,1]
+    #     extra_array[frame_nums:frame_nums+self.data.shape[0]] = self.data
+    #     if fade:
+    #         introEaseArray=np.zeros((frame_nums,self.data.shape[1]),dtype=np.float64)
+    #         outroEaseArray=np.zeros((frame_nums,self.data.shape[1]),dtype=np.float64)
+    #         for n in range(introEaseArray.shape[0]):
+    #             introEaseArray[n]=easing.inOutQuad(n,zfirstDiff,-zfirstDiff,introEaseArray.shape[0])
+    #         for n in range(outroEaseArray.shape[0]):
+    #             outroEaseArray[n]=easing.inOutQuad(n,zlastDiff,-zlastDiff,outroEaseArray.shape[0])  
+    #     for i in range(frame_nums):
+    #         extra_array[self.data.shape[0]+frame_nums+i,:,0] = xylastFrame
+    #         if fade:
+    #             extra_array[self.data.shape[0]+frame_nums+i,:,1] = extra_array[self.data.shape[0]+frame_nums+i-1,:,1]-outroEaseArray[i]
+    #             extra_array[frame_nums-i-1,:,1] = extra_array[frame_nums-i,:,1]-introEaseArray[i]
+    #         else:
+    #             extra_array[self.data.shape[0]+frame_nums+i,:,1] = extra_array[self.data.shape[0]+frame_nums+i-1,:,1]-zlastDiff
+    #             extra_array[frame_nums-i-1,:,1] = extra_array[frame_nums-i,:,1] + zfirstDiff
+    #         extra_array[frame_nums-i-1,:,0] = xyfirstFrame
+    #     return extra_array
+    
+    #時間の変化率を維持したまま、始まりと終わり部分を延長させる。fade引数をTrueでスピード０に落ち着かせる。2023.12.11updated 
+    def timeFlowKeepingExtend(self, frame_nums: int, fade: bool = False, intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout"):
         print(sys._getframe().f_code.co_name)
-        extra_array = np.zeros((self.data.shape[0]+frame_nums*2,self.data.shape[1],2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
-        xyfirstFrame = self.data[0,:,0]
-        xylastFrame = self.data[-1,:,0]
-        zfirstDiff = self.data[1,:,1]-self.data[0,:,1]
-        zlastDiff = self.data[-2,:,1]-self.data[-1,:,1]
-        extra_array[frame_nums:frame_nums+self.data.shape[0]] = self.data
+        if intro == False and outro == False: return
+
+        if intro == False or outro == False:
+            extra_array = np.zeros((self.data.shape[0] + frame_nums, self.data.shape[1], 2), dtype=np.float64)    
+        else:
+            extra_array = np.zeros((self.data.shape[0] + frame_nums * 2, self.data.shape[1], 2), dtype=np.float64)
+        xyfirstFrame = self.data[0, :, 0]
+        xylastFrame = self.data[-1, :, 0]
+        zfirstDiff = self.data[1, :, 1] - self.data[0, :, 1]
+        zlastDiff = self.data[-2, :, 1] - self.data[-1, :, 1]
+        fade_speed_array=np.full(self.data.shape[1], -1*fade_speed)
+
+        # コピーするデータの範囲を決定
+        if intro:
+            copy_start = frame_nums
+            copy_end = frame_nums + self.data.shape[0] 
+        else :
+            copy_start = 0
+            copy_end =  self.data.shape[0] 
+        
+
+        extra_array[copy_start:copy_end] = self.data
+
         if fade:
-            introEaseArray=np.zeros((frame_nums,self.data.shape[1]),dtype=np.float64)
-            outroEaseArray=np.zeros((frame_nums,self.data.shape[1]),dtype=np.float64)
-            for n in range(introEaseArray.shape[0]):
-                introEaseArray[n]=easing.inOutQuad(n,zfirstDiff,-zfirstDiff,introEaseArray.shape[0])
-            for n in range(outroEaseArray.shape[0]):
-                outroEaseArray[n]=easing.inOutQuad(n,zlastDiff,-zlastDiff,outroEaseArray.shape[0])  
+            introEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if intro else None
+            outroEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if outro else None
+            if intro:
+                for n in range(introEaseArray.shape[0]):
+                    if fade_type=="inout":
+                        introEaseArray[n] = easing.inOutQuad(n, zfirstDiff, -fade_speed_array-zfirstDiff, introEaseArray.shape[0])
+                    elif fade_type=="in":
+                        introEaseArray[n] = easing.inQuad(n, zfirstDiff, -fade_speed_array-zfirstDiff, introEaseArray.shape[0])
+                    elif fade_type=="out":
+                        introEaseArray[n] = easing.outQuad(n, zfirstDiff, -fade_speed_array-zfirstDiff, introEaseArray.shape[0])
+            if outro:
+                for n in range(outroEaseArray.shape[0]):
+                    if fade_type=="inout":
+                        outroEaseArray[n] = easing.inOutQuad(n, zlastDiff, fade_speed_array-zlastDiff, outroEaseArray.shape[0])
+                    elif fade_type=="in":
+                        outroEaseArray[n] = easing.inOutQuad(n, zlastDiff, fade_speed_array-zlastDiff, outroEaseArray.shape[0])
+                    elif fade_type=="out":
+                        outroEaseArray[n] = easing.inOutQuad(n, zlastDiff, fade_speed_array-zlastDiff, outroEaseArray.shape[0])
+
         for i in range(frame_nums):
-            extra_array[self.data.shape[0]+frame_nums+i,:,0] = xylastFrame
-            if fade:
-                extra_array[self.data.shape[0]+frame_nums+i,:,1] = extra_array[self.data.shape[0]+frame_nums+i-1,:,1]-outroEaseArray[i]
-                extra_array[frame_nums-i-1,:,1] = extra_array[frame_nums-i,:,1]-introEaseArray[i]
-            else:
-                extra_array[self.data.shape[0]+frame_nums+i,:,1] = extra_array[self.data.shape[0]+frame_nums+i-1,:,1]-zlastDiff
-                extra_array[frame_nums-i-1,:,1] = extra_array[frame_nums-i,:,1] + zfirstDiff
-            extra_array[frame_nums-i-1,:,0] = xyfirstFrame
+            if outro:
+                extra_array[copy_end + i, :, 0] = xylastFrame
+                if fade:
+                    extra_array[copy_end + i, :, 1] = extra_array[copy_end + i - 1, :, 1] - outroEaseArray[i]
+                else:
+                    extra_array[copy_end + i, :, 1] = extra_array[copy_end + i - 1, :, 1] - zlastDiff
+            if intro:
+                extra_array[frame_nums - i - 1, :, 0] = xyfirstFrame
+                if fade:
+                    extra_array[frame_nums - i - 1, :, 1] = extra_array[frame_nums - i, :, 1] - introEaseArray[i]
+                else:
+                    extra_array[frame_nums - i - 1, :, 1] = extra_array[frame_nums - i, :, 1] - zfirstDiff
         return extra_array
 
+
     # 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。fade引数をTrueでスピード０に落ち着かせる。
-    def applyTimeFlowKeepingExtend(self,frame_nums:int,fade:bool=False):
+    def applyTimeFlowKeepingExtend(self,frame_nums:int,fade:bool=False,intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout"):
         print(sys._getframe().f_code.co_name)
-        self.data = self.timeFlowKeepingExtend(frame_nums,fade)
+        self.data = self.timeFlowKeepingExtend(frame_nums,fade,intro,outro,fade_speed,fade_type)
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1])
             
     #配列全体に時間の順方向の流れ（単位はslide_time）を付与する。
@@ -797,14 +867,14 @@ class drawManeuver:
 
 
     #軌道配列と入力映像のフレーム数を照あわせて、入力映像の時間的な意味での中心フレームに寄せる。
-    def zCenterArrange(self):
+    def zCenterArange(self):
         print(sys._getframe().f_code.co_name)
         ediff = self.count-np.amax(self.data[:,:,1])
         idiff = np.amin(self.data[:,:,1])
         if (ediff + idiff) > 0 :
             self.data[:,:,1] -= idiff #0基準に戻す
             self.data[:,:,1] += int((idiff+ediff)/2)
-            self.maneuver_log("zCenterArranged")
+            self.maneuver_log("zCenterAranged")
         else : 
             return
     
@@ -1105,7 +1175,7 @@ class drawManeuver:
             f.write('        mix.set("dry",1-((c[i][0] / zmax)*0.2));\r')
             f.write('        };\r    };\r)')
 
-    def maneuver_2dplot(self, thread_num=None, debugmode=False,normal_line_draw=False, w_inc=5, h_inc=9,plinewidth=1.0,individual_output=False,palpha=1.0,x_positions=[],y_positions=[]):
+    def maneuver_2dplot(self, thread_num=None, debugmode=False,normal_line_draw=False, w_inc=5, h_inc=9,plinewidth=1.0,individual_output=False,timeflow_scaling=True,palpha=1.0,x_positions=[],y_positions=[]):
         print(sys._getframe().f_code.co_name)
         if thread_num != None: 
             self.info_setting(thread_num)
@@ -1137,12 +1207,13 @@ class drawManeuver:
             fig1.set_size_inches(w_inc, h_inc/3)
             fig1.tight_layout()
             fig1.savefig(self.ORG_NAME+"_"+self.out_name_attr+'_'+str(j)+'thread_SpaceFlow.png', dpi=300, transparent=True)
-
             fig2, ax2 = plt.subplots()
             for n in range(j):
                 ax2.plot(self.sc_resetPositionMap[n], color=color_map(n),linewidth=plinewidth,alpha=palpha)
                 # ax2.plot(self.sc_resetPositionMap[n], color="red",linewidth=plinewidth)
             ax2.set_ylabel('Time Flow(frame)')
+            # Y軸の最大値を設定
+            if timeflow_scaling != True : ax2.set_ylim(top=self.count)
             fig2.set_size_inches(w_inc, h_inc/3)
             fig2.tight_layout()
             fig2.savefig(self.ORG_NAME+"_"+self.out_name_attr+'_'+str(j)+'thread_TimeFlow.png', dpi=300, transparent=True)
@@ -1177,6 +1248,8 @@ class drawManeuver:
             for n in range(j):
                 ax2.plot(self.sc_resetPositionMap[n], color=color_map(n),linewidth=plinewidth,alpha=palpha)
                 # ax2.plot(self.sc_resetPositionMap[n], color="red",linewidth=plinewidth,alpha=palpha)
+            # Y軸の最大値を設定
+            if timeflow_scaling != True : ax2.set_ylim(top=self.count)
             ax2.set_ylabel('Time Flow(frame)')
 
             ax3 = fig.add_subplot(3, 1, 3)
@@ -1292,7 +1365,7 @@ class drawManeuver:
         np.save(self.ORG_NAME+"_"+self.out_name_attr+'_raw.npy',self.data)
 
     # 映像のレンダリング
-    def transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False,title_atr:str=None, tmp_type_para=0):
+    def transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False,title_atr:str=None, tmp_type_para=0,del_data=True,auto_memory_clear=True,memory_report=False,tmp_save = False ):
         #self.outfpsはグローバルで定義
         color_depth = 8
         num_channels = 3
@@ -1336,7 +1409,11 @@ class drawManeuver:
             cut = wr_array.shape[0] * i // separate_num  # 整数の除算を使用して切れ目を計算
             cut_points.append(cut)
         self.maneuver_2dplot(x_positions=cut_points)
-        # self.data=wr_array
+        
+        if del_data :
+            #メモリの最適化のため
+            del self.data
+        
         if self.sepVideoOut != 1:  #sepVideoOut　はglobal関数。セパレートしない場合、rawでnpアレイファイルをテンポファイルとしてハードディスクに貯めておき、全てのアレイが準備できてからレンダリングする。そのためHD容量を100GBとか普通に食う。
             if os.path.isdir("tmp")==False:
                 os.makedirs("tmp")
@@ -1357,19 +1434,18 @@ class drawManeuver:
                 seqrender=False
             
         for s in range(sep_start_num,sep_end_num):
-            #事前に変数宣言をしておく。
-            #ここでメモリーリークしがち。アクティブモニターをみると、100GBを超えることもある、ディスク容量不足でディスクバッファが使えない場合はエラーで止まる。
-            print("img-declare",int(s*wr_array.shape[0]/separate_num),"->",int((s+1)*wr_array.shape[0]/separate_num))
-            # 画像データを格納するためのNumpy配列を初期化］
+            # メモリ統計を格納するためのリスト
+            if memory_report : memory_stats = []
             if self.scan_direction % 2 == 1:
                 img_shape = (int(self.height), int(wr_array.shape[1]), 3)
             else:
                 img_shape = (int(wr_array.shape[1]), int(self.width), 3)
-            
             base_images_frame_num = wr_array.shape[0]//separate_num
             images_frame_num = base_images_frame_num
             if s == sep_end_num-1:
                 images_frame_num +=  wr_array.shape[0] % separate_num
+            
+            print("img-declare",int(s*wr_array.shape[0]/separate_num),"->",int((s+1)*wr_array.shape[0]/separate_num))
             images = np.zeros((images_frame_num, *img_shape), dtype=np.uint8)
             seq_read_s=int(s*base_images_frame_num)
             seq_read_e=int(seq_read_s+images_frame_num)#分割できなかった余剰フレームは最後の演算の時に加える
@@ -1384,10 +1460,11 @@ class drawManeuver:
                     video = cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.width),int(wr_array.shape[1])),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.width)),1)
             interval_first = None
             block_num = 0
-            minz = np.amin(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1])
-            maxz = np.amax(wr_array[int(s*wr_array.shape[0]/separate_num):int((s+1)*wr_array.shape[0]/separate_num),:,1])
+            minz = np.amin(wr_array[seq_read_s:seq_read_e,:,1])
+            maxz = np.amax(wr_array[seq_read_s:seq_read_e,:,1])
             print("minz",minz)
             print("maxz",maxz)
+            print("depth=",np.amin(self.sc_now_depth[seq_read_s:seq_read_e]),np.amax(self.sc_now_depth[seq_read_s:seq_read_e]))
             
             totalnum=maxz-minz
             totalslits=wr_array.shape[0]/separate_num*wr_array.shape[1]
@@ -1559,8 +1636,8 @@ class drawManeuver:
                             elif out_type != 0 :
                                 if self.sepVideoOut == 1 or separate_num == 1:
                                     if XY_TransOut :
-                                        if rotate_direction: video.write(img%d.transpose(1,0,2)[:,::-1])
-                                        else : video.write(img%d.transpose(1,0,2)[::-1])
+                                        if rotate_direction: video.write(images[i].transpose(1,0,2)[:,::-1])
+                                        else : video.write(images[i].transpose(1,0,2)[::-1])
                                     else: video.write(images[i])
                                 else :
                                     tmp_name="tmp/"+self.ORG_NAME+"_"+str(i)
@@ -1608,6 +1685,7 @@ class drawManeuver:
                 else :
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, num)
                     sstime = time.time()
+                    Interval=0
                     while(self.cap.isOpened()):
                         ret, frame = self.cap.read()
                         reedfull_bool = num < (maxz+1)
@@ -1630,14 +1708,26 @@ class drawManeuver:
                                         slitscounter += len(indices[0])
                             num += 1
                             etime = time.time()
-                            Interval = etime - stime
-                            if interval_first == None :
-                                interval_first = Interval
-                            elif Interval < interval_first :
-                                interval_first=Interval
+                            newterval=(etime - stime)/(len(indices[0])+1)*1000
+                            if Interval*2.5 < newterval and Interval!=0 and auto_memory_clear : 
+                                gc.collect()
+                                print("memoryclear", newterval ,Interval)
+                            Interval = newterval
+                            # if interval_first == None :
+                            #     interval_first = Interval
+                            # elif Interval < interval_first :
+                            #     interval_first=Interval
                             #progressbar
                             bar= '■'*int((num-minz)*progresscale) + "."*int((totalnum-(num-minz))*progresscale)
-                            print(f"\r\033[K[\033[33m{bar}\033[39m] frame{(num-minz)/totalnum*100:.02f}%({minz}>{num}>{maxz}) Slits{slitscounter/totalslits*100:.02f}%({slitscounter}/{int(totalslits)}) : {round(Interval,2)}({round(interval_first,2)})sec/f",end="")
+                            # print(f"\r\033[K[\033[33m{bar}\033[39m] frame{(num-minz)/totalnum*100:.02f}%({minz}>{num}>{maxz}) Slits{slitscounter/totalslits*100:.02f}%({slitscounter}/{int(totalslits)}) : {round(Interval,2)}({round(interval_first,2)})sec/f",end="")
+                            print(f"\r\033[K[\033[33m{bar}\033[39m] frame{(num-minz)/totalnum*100:.02f}%({minz}>{num}>{maxz}) Slits{slitscounter/totalslits*100:.03f}%({slitscounter}/{int(totalslits)}) : {round(Interval,2)}ms/slit",end="")
+                            # if num%(totalnum//100)==0:
+                            if memory_report : 
+                                vmem = psutil.virtual_memory()
+                                memory_stats.append([
+                                    Interval,sys.getsizeof(images),vmem.total, vmem.available, vmem.used, vmem.percent,
+                                    vmem.active, vmem.inactive, vmem.wired, vmem.free
+                                ])
                         else:
                             print("\r")
                             lbstime = time.time()
@@ -1678,13 +1768,15 @@ class drawManeuver:
                                         print(f"\r\033[K[\033[32m{bar}\033[39m] {ci/writingTotalNum*100:.02f}% ({knterval:.02f})sec/f",end="")
                                 if self.sepVideoOut == 1  or separate_num == 1 : video.release()
                             else:
-                                if out_type == 1 and (self.sepVideoOut != 1 or separate_num != 1):
+                                # if out_type == 1 and (self.sepVideoOut != 1 or separate_num != 1):
+                                if out_type != 0 and self.sepVideoOut != 1 and separate_num != 1:
                                     wstime = time.time()
                                     tmp_name="tmp/"+self.ORG_NAME+"_sep-"+str(s)
                                     np.save(tmp_name,images)
                                     knterval = round(time.time()-wstime,2)
                                     print("tmp-npydata_saved",images.shape,knterval,"sec")
                                 else : 
+                                    print("direct render")
                                     for i in range(int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num)):
                                         wstime = time.time()
                                         if out_type != 1:
@@ -1709,8 +1801,20 @@ class drawManeuver:
                     del images
                     print("done:",s+1,"/",separate_num)
                     render_rate = round((time.time()-sstime)/ ((wr_array.shape[0]/separate_num) / 30),2)
-                    append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory_usage="+str(round(((file_size_megabytes / separate_num) / (psutil.virtual_memory().available/(1024)**2))*100,1))+"%")
+                    append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%")
+                    # append_to_logfile(str(psutil.virtual_memory()))
+                    print(psutil.virtual_memory())
                     print("\r")
+                    if memory_report :
+                        with open('memory_stats'+self.ORG_NAME+'-'+str(s+1)+'-'+str(separate_num)+'.csv', 'w', newline='') as file:
+                            writer = csv.writer(file)
+                            # CSV ヘッダー
+                            writer.writerow([
+                                'render_time','images_size','total', 'available', 'used', 'percent', 
+                                'active', 'inactive', 'wired', 'free'
+                            ])
+                            # データの書き込み
+                            writer.writerows(memory_stats)
                     gc.collect()
         if self.cap != None and  seqrender == False: self.cap.release()
         if self.sepVideoOut != 1 and out_type != 0 and separate_num != 1:
@@ -1764,10 +1868,10 @@ class drawManeuver:
                         ci=i+total_last_imagecounts
                         bar= '■'*int(ci*self.progressbarsize/wr_array.shape[0])+ "."*int((wr_array.shape[0]-ci)*self.progressbarsize/wr_array.shape[0])
                         print(f"\r\033[K[\033[31m{bar}\033[39m] {ci/wr_array.shape[0]*100:.02f}%",end="")
-                    os.remove("tmp/"+self.ORG_NAME+"_sep-"+str(s)+".npy")
+                    if tmp_save != True : os.remove("tmp/"+self.ORG_NAME+"_sep-"+str(s)+".npy")
                     total_last_imagecounts += last_images.shape[0]
             video.release()
-            os.rmdir("tmp")
+            if tmp_save != True : os.rmdir("tmp")
         runOverTime = time.time()
         lnterval = round(runOverTime-runFirstTime,2)
         print("All Done",lnterval,"sec")
@@ -2197,7 +2301,7 @@ class drawManeuver:
         self.interpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=0,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
 
     # wr_arrayに新たなTrans（）の軌跡を加えて返す関数    
-    def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True):
+    def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True,zscale=1):
         if len(self.data) != 0 : 
             extra_array = np.zeros((self.data.shape[0]+frame_nums,self.scan_nums,2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
             extra_array[0:self.data.shape[0]] = self.data
@@ -2206,7 +2310,8 @@ class drawManeuver:
         else : 
             extra_array = np.zeros((frame_nums,self.scan_nums,2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
             outroFrameXP = np.full(self.scan_nums,start_line*(self.scan_nums-1)) 
-            outroFrameZ = np.arange(0,self.scan_nums) if zd else np.arange(self.scan_nums-1,-1,-1)
+            outroFrameZ = np.arange(0,self.scan_nums* zscale,1 * zscale) if zd else np.arange(self.scan_nums * zscale -1, -1, -1 * zscale)
+            outroFrameZ = np.round(outroFrameZ).astype(int)
         endFrame = np.full(self.scan_nums,end_line*(self.scan_nums-1)) 
         normalFrame=np.arange(0,self.scan_nums)
         diff_array = endFrame - outroFrameXP
@@ -2525,7 +2630,7 @@ class drawManeuver:
 
     # 回転の中心軸を漸次的に変化させる
     #extradegree=90,180,270などの設定の時に、初期値（i=0）が数値が飛ぶ。i=0のときに、うまくshift_num=0で始まってi=1のときにshift_num=1にするようにしたいが、いろいろ調整が難しそう。現状90.1あるいは89などの数値をextradegreeにはめてあげると解決策になる
-    def addCustomCycleTrans(self,frame_nums,cycle_degree,start_center=1/2,end_center=1/2,t_auto_scaling=False,extra_degree=0,speed_round = True,zslide=0,auto_zslide=True,t_auto_scaling_num=0.9,zscale=1):
+    def addCustomCycleTrans(self,frame_nums,cycle_degree,start_center=1/2,end_center=1/2,t_auto_scaling=False,extra_degree=0,speed_round = True,zslide=0,auto_zslide=True,t_auto_scaling_num=0.9,zscale=1,spaceflow=True):
         print(sys._getframe().f_code.co_name)
         permit_auto_zslide=False
         if zslide == 0:
@@ -2565,7 +2670,7 @@ class drawManeuver:
                 ycenter =(start_center+i*(defcenter/frame_nums))*(self.height-1)
                 for y in range(0,int(self.height)):
                     pernum=(y-(ycenter))/self.height if ccos > 0 else (y-(self.height-ycenter))/self.height #yのズレのための計算,ccosが90度を超えるとはみ出てしまう問題の解消
-                    yp = ycenter + ccos * (self.height-1) * pernum
+                    yp = ycenter + ccos * (self.height-1) * pernum if spaceflow else y
                     if permit_auto_zslide : zslide=self.data[-1:y:1]
                     zp=zslide -csin*maxz*pernum - ((y-ycenter)+((self.height-y)-ycenter))*shift_num * maxz/self.height #反転するごとにZのズレを補正していく
                     # if shift_num>0:print(((y-ycenter)+((self.height-y)-ycenter))*shift_num )
@@ -2576,7 +2681,7 @@ class drawManeuver:
                 xcenter =(start_center+i*(defcenter/frame_nums))*(self.width-1)
                 for x in range(0,int(self.width)):
                     pernum=(x-(xcenter))/self.width if ccos > 0 else  (x-(self.width-xcenter))/self.width #xのズレのための計算,ccosが90度を超えるとはみ出てしまう問題の解消
-                    xp = xcenter + ccos * (self.width-1) * pernum
+                    xp = xcenter + ccos * (self.width-1) * pernum  if spaceflow else x
                     if permit_auto_zslide : zslide=self.data[-1,x,1]
                     zp = zslide-csin*maxz*pernum-((x-xcenter)+((self.width-x)-xcenter))* shift_num * maxz/self.width #反転するごとにZのズレを補正していく
                     # if shift_num>0:print(((x-xcenter)+((self.width-x)-xcenter))*shift_num )
@@ -2624,7 +2729,8 @@ class drawManeuver:
                 self.data = np.vstack((self.data,wr_array))
             else : self.data = wr_array
         
-        self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(cycle_degree)+"-zscale"+str(t_auto_scaling)+"_"+str(start_center)+"->"+str(end_center))
+        spf_attr="" if spaceflow else "-spacefix"
+        self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(cycle_degree)+"-zscale"+str(t_auto_scaling)+"_"+str(start_center)+"->"+str(end_center)+spf_attr)
     #中心外を、エッジのスリットに時間差をつけて表示する。回転の中心軸を漸次的に変化させる
     def addWideCustomCycleTrans(self,frame_nums,cycle_degree,start_center,end_center,maxz_range=None,wide_scale=3,t_auto_scaling=False,extra_degree=0,speed_round = True):
         print(sys._getframe().f_code.co_name)
@@ -3085,7 +3191,7 @@ def custom_blur(data, s_frame, e_frame, bl_time, dim_num=1):
     data[s_frame:e_frame,:,dim_num] = blur_array
     return data
 if __name__ == '__main__':
-    print("hello,ver=A")
+    print("hello,ver=1.00")
     # 定義されている関数のリストを取得
     functions = [func for func in locals().values() if inspect.isfunction(func)]
 
