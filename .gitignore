@@ -54,6 +54,15 @@
 /test17 copy 3.py
 /test.py
 /ttest.py
+/midtide3 copy 3.py
+/midtide3 copy 5.py
+/midtide3 copy 6.py
+/re_render copy.py
+/re_render.py
+/renderednpy_to_mov.py
+/renderednpys_to_mov copy.py
+/slack_waves.py
+/test18.py
 
 /npy_to_info.py
 /npy_to_mov.py
