@@ -132,9 +132,13 @@ class drawManeuver:
                 permit_auto_zslide=True
         if permit_auto_zslide : zslide = maneuver[0,:,1]-self.data[-1,:,1]
         maneuver[:,:,1]=maneuver[:,:,1]-zslide
-        self.data = np.vstack((self.data,maneuver))
-        self.maneuver_log(sys._getframe().f_code.co_name)
-    
+        if maneuver.shape[0] > 0:
+            self.data = np.vstack((self.data,maneuver))
+            self.maneuver_log(sys._getframe().f_code.co_name)
+        else:
+            print("no data")
+
+
     #added 2023 11/25
     def wide_expand(self,add_size=300,sclip=True,zclip=True):
         # 2次元目にパディングを適用（左右に均等にパディングを追加）
@@ -600,7 +604,7 @@ class drawManeuver:
         print("Slide_timeの計算後 min-max =",np.amin(self.data[:,:,-1]),np.amax(self.data[:,:,-1]))
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(slide_time))
 
-    def applyTimeChoppyLoopB(self, slide_time=None, frequency=1, phase_shift=0, rise=0.5, fall=0.5, wave_type='triangle'):
+    def applyTimeChoppyLoopB(self, slide_time=None, frequency=1, phase_shift=0, rise=0.5, fall=0.5, wave_type='triangle',blur=0):
         print(sys._getframe().f_code.co_name)
         if slide_time is None:
             slide_time = self.outfps / self.recfps
@@ -618,14 +622,37 @@ class drawManeuver:
                 else:
                     triangle_wave[i] = -((mod_t - 2 * np.pi * rise) / (2 * np.pi * fall)) * 2 + 1
             wave = triangle_wave
+            # 頂点の時間位置を計算
+            if blur != 0 :
+                vertex_times = []
+                period = 2 * np.pi / frequency
+                for peak in np.arange(phase_shift * np.pi, t_shifted[-1], period):
+                    if peak <= t_shifted[-1]:
+                        vertex_times.append(peak)
+                    if peak + period * rise <= t_shifted[-1]:
+                        vertex_times.append(peak + period * rise)
+
+                # t_shiftedの実際の時間範囲にマッピング
+                real_time_vertex_times = [vertex_time * (N / (2 * np.pi)) for vertex_time in vertex_times]
+
+                # 頂点の時間位置を表示
+                print("頂点（実数時間）：", real_time_vertex_times)
+            
         elif wave_type == 'sine':
              # サイン波の生成
         # 振幅のスケーリング (rise と fall の平均値/ 2を使用)
             # amplitude_scale = (rise + fall) / 2
-            wave = np.sin(t_shifted)/ 2
+            wave = np.sin(t_shifted)
         # 波形のスケーリングと適用
         scaled_wave = (wave + 1) / 2 * (N / 2 * slide_time)
         scaled_wave_expanded = np.tile(scaled_wave, (self.data.shape[1], 1)).T
+        # plt.plot(scaled_wave_expanded)
+        if blur != 0 :
+            range_frame=blur
+            scaled_wave_expanded=onedimention_LoopBlur( scaled_wave_expanded,blur)
+            # for point_frame in real_time_vertex_times:
+            #     scaled_wave_expanded=custom_onedimention_blur(scaled_wave_expanded,s_frame=int(point_frame-range_frame), e_frame=int(point_frame+range_frame), bl_time = blur)
+
         self.data[:,:,1] += scaled_wave_expanded
         print("Slide_timeの計算後 min-max =", np.amin(self.data[:,:,-1]), np.amax(self.data[:,:,-1]))
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1] + str(slide_time))
@@ -961,13 +988,20 @@ class drawManeuver:
         self.maneuver_log(sys._getframe().f_code.co_name)
     #指定したZアレイと最後のフレームの差分を計算して、差分があれば、差分を埋め合わせるように、全てのフレームにたいして、調整する。
     #最初のフレームは固定する
-    def applyOutFix(self,target_z_array):
+    def applyOutFix(self,target_z_array,ease=True):
         print(sys._getframe().f_code.co_name)
         gap=(self.data[-1,:,1]-target_z_array)
         if abs(np.amax(gap)) > 1:
             print("Gapあり",np.amax(gap))
             for k in range(self.data.shape[0]):
-                self.data[k,:,1]-=gap*(k/self.data.shape[0])
+                if ease :
+                    # イーズインアウト計算（シンプルなsin関数を使用）
+                    t =np.clip(k/self.data.shape[0],0,1)  # 進行度（0から1）
+                    easing = 0.5 - math.cos(t * math.pi) * 0.5  # イーズインアウト補間
+                    # データの調整
+                    self.data[k, :, 1] -= gap * easing
+                else:
+                    self.data[k,:,1]-=gap*(k/self.data.shape[0])
         self.maneuver_log(sys._getframe().f_code.co_name)
     
     #指定した時間と指定したフレーム（a-frame）の差分を計算して、差分があれば、差分を埋め合わせるように、A-Bの範囲のフレームにたいして、調整する。
@@ -1290,7 +1324,7 @@ class drawManeuver:
 
             fig3, ax3 = plt.subplots()
             for n in range(j):
-                ax3.plot(self.sc_resetPositionMap[n,s_frame:e_frame], color=color_map(n),linewidth=plinewidth,alpha=palpha)
+                ax3.plot(self.applyTimeBlursc_rateMap[n,s_frame:e_frame], color=color_map(n),linewidth=plinewidth,alpha=palpha)
                 # ax3.plot(self.sc_resetPositionMap[n,s_frame:e_frame], color="red",linewidth=plinewidth)
             ax3.set_ylabel('Play Rate')
             if normal_line_draw :
@@ -1355,8 +1389,7 @@ class drawManeuver:
 
             ax3 = fig.add_subplot(3, 1, 3)
             for n in range(j):
-                ax3.plot(x_range,self.sc_resetPositionMap[n,s_frame:e_frame], color=color_map(n),linewidth=plinewidth,alpha=palpha)
-                # ax3.plot(self.sc_resetPositionMap[n,s_frame:e_frame], color="red",linewidth=plinewidth,alpha=palpha)
+                ax3.plot(x_range,self.sc_rateMap[n,s_frame:e_frame], color=color_map(n),linewidth=plinewidth,alpha=palpha)
             ax3.set_ylabel('Play Rate')
             if normal_line_draw :
                 ax3.axhline(y=1.0, color='black', linestyle='-',linewidth=palpha)
@@ -4045,6 +4078,8 @@ def convert_npys_to_video(input_folder, output_folder, fps=30):
 
 def custom_blur(data, s_frame, e_frame, bl_time, dim_num=1):
     time_array = data[:,:,dim_num]
+    s_frame=np.clip(s_frame,0,time_array.shape[0])
+    e_frame=np.clip(e_frame,0,time_array.shape[0])
     blur_array = np.zeros([e_frame - s_frame, data.shape[1]], dtype=np.float64)
 
     # ブラー時間が短い場合の調整
@@ -4071,6 +4106,44 @@ def custom_blur(data, s_frame, e_frame, bl_time, dim_num=1):
     # 更新されたブラー配列を元のデータに代入
     data[s_frame:e_frame,:,dim_num] = blur_array
     return data
+
+
+def custom_onedimention_blur(time_array, s_frame, e_frame, bl_time):
+    s_frame=np.clip(s_frame,0,time_array.shape[0])
+    e_frame=np.clip(e_frame,0,time_array.shape[0])
+    
+    blur_array = np.zeros([e_frame - s_frame, time_array.shape[1]], dtype=np.float64)
+
+    # ブラー時間が短い場合の調整
+    if e_frame - s_frame < bl_time :
+        bl_time = (e_frame - s_frame) 
+
+    for y in range(e_frame - s_frame):
+        # フレームの位置に応じてブラー適応範囲を動的に決定
+        if y < bl_time / 2:
+            # s_frameに近い場合は、範囲を縮小
+            apply_bl_time = y
+        elif (e_frame - s_frame) - y - 1 < bl_time / 2:
+            # e_frameに近い場合は、範囲を縮小
+            apply_bl_time = (e_frame - s_frame) - y - 1
+        else:
+            apply_bl_time = bl_time // 2
+
+        start_index =int(max(s_frame + y - apply_bl_time, 0))
+        end_index = int(min(s_frame + y + apply_bl_time + 1, time_array.shape[0]))
+        blur_range = time_array[start_index:end_index, :]
+        # print(y,apply_bl_time,start_index,end_index)
+        blur_array[y, :] = np.mean(blur_range, axis=0)
+
+    # 更新されたブラー配列を元のデータに代入
+    time_array[s_frame:e_frame] = blur_array
+    return time_array
+
+def onedimention_LoopBlur(time_array,blur):
+    array = np.vstack((np.vstack((time_array,time_array)),time_array))
+    if blur > 0 : array=cv2.blur(array,(1,int(blur)))
+    return array[time_array.shape[0]:time_array.shape[0]+time_array.shape[0],:]
+
 # フレームを時間に変換する関数
 def frames_to_min_sec(frames, fps):
     seconds = int(frames // fps)
