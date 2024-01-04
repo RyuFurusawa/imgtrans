@@ -272,7 +272,7 @@ your_maneuver.transprocess(out_type=0) #0=still, 1=video, 2=both
 詳細は [`transprocess`](#transprocessメソッド)こちらを参照ください。
 
 #### 音声のレンダリング
-音声処理自体は、SuperColliderで行います。  
+音声処理自体は、SuperCollider(https://supercollider.github.io)で行います。  
 まず、SuperColliderで読み込ませるコードをクラスメソッドの`scd_out`から出力します。  
 `scd_out`では、インスタンス変数の`data`で記述されたスリットの動きのデータから、音声出力するために、スリットの本数を間引いた上で出力します。   
 音声ファイル名はインスタンス変数`sc_FNAME`にて指定できます。デフォルトでは、[入力映像のファイル名.aiff] としています。入力映像と同じディレクトリに保存されていることを確認して下さい。  
@@ -315,7 +315,7 @@ AudioのSetting、`SynthDef`によるシンセの定義、音声データの読�
 デフォルトでは以下のようになっています。
 
 ```supercollier
-Server.default.options.outDevice_("MacBook Proのス");
+Server.default.options.outDevice_("MacBook Pro");
 ```
 以下を実行することで、指定可能なデバイスリストがコンソールwindowに出力されます。
 ```supercollier
@@ -338,13 +338,17 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 このクラスはImgtransライブラリのメインとなるものです。
 
 ### クラス変数:
-- `imgtype`: レンダリングにおける静止画像のフォーマット（デフォルトは ".jpg"）
+- `imgtype`: レンダリングにおける静止画像のフォーマット（デフォルトは `.jpg`）
 - `img_size_type`: 出力イメージのサイズの設定。入力の映像の高さをh,幅をwとすると、`0`:h,w `1`:w,w*2 `2`:総フレーム数分 `3`: square （デフォルトは `0`）
-- `outfps`: 出力のフレームレート（デフォルトは 30）
-- `auto_visualize_out`: 自動可視化の設定（デフォルトは True）
-- `default_debugmode`: デフォルトのデバッグモード設定（デフォルトは False）
+- `outfps`: 出力のフレームレート（デフォルトは `30`）
+- `auto_visualize_out`: 自動可視化の設定（デフォルトは `True`）
+- `default_debugmode`: デフォルトのデバッグモード設定（デフォルトは `False`）
 - `audio_form_out`: オーディオ形式出力の設定（デフォルトはFalse）
-- `embedHistory_intoName`: 名前への履歴埋め込みの設定（デフォルトは True）
+- `embedHistory_intoName`: 名前への履歴埋め込みの設定（デフォルトは `True`）
+- `memory_percent`: 映像のレンダリングの際に、確保するメモリーの許容容量。単位は％。アクティブメモリに対しての比率となる。（デフォルトは `60`％）
+- `plot_w_inc`:2dプロットのグラフの横のインチサイズ（デフォルトは `5`）
+- `plot_h_inc`:2dプロットのグラフの縦のインチサイズ（デフォルトは `9`）
+- `xyt_boxel_scale`:内部で構築する時空間キューブのアスペクト関数のうち時間軸方向へのフレーム単位のものへの影響はない。TransporitionやInterpolation、cycleTransなどの関数の引数として扱うzslideやzscaleは、入力映像の画像のサイズに対して実数が計算される。そのため、解像度を低くした映像でのテスト描画において、出力映像の見た目に差異が現れる。そのため、`xyt_boxel_scale`に、比率を設定することで、調整される。（デフォルトは `1`）
 <!-- - `progressbarsize`: プログレスバーサイズ（デフォルトは 50） -->
 <!-- - `sepVideoOut`: セパレート出力設定 -->
 
@@ -371,6 +375,7 @@ QuickTimePlayerのあるmacのみ実行可能ですので、それ以外の環�
 1. **out_videopath**: 出力したビデオのパスを保持する。初期値は空。[animationout](#animationoutメソッド)にて呼び出す。
 18. **sc_FNAME**: 入力のヴィデオのファイル名に ".AIFF" を追加したものを自動で受け取るように初期設定されています。音声処理をするためのsuper collider用のコードを出力する際に使用します。
 13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: 軌道配列を音声処理用にスリットの分割数を落とし最適化した配列
+
 <!-- 1. **cap**: OpenCVのVideoCaptureオブジェクト。入力ビデオの情報を持つ。
 16. **log**: ログのカウンタ。デフォルトは0。マニューバーの編集工程のログを取っています。
 17. **infolog**: インフォログのカウンタ。デフォルトは0。
@@ -645,9 +650,18 @@ your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=Tru
 - `sep_end_num` (int or None, optional, default: `None`): 分割レンダリング時に、どの分割まで行うかの指定。
 - `out_type` (int, optional, default: `1`): 出力形式の指定。`1`は映像、`0`は静止画、`2`は映像と静止画両方。
 - `XY_TransOut` (bool, optional, default: `False`): Trueの場合、出力映像を90度回転して保存。
-- `render_mode` (int, doptional, default: `0`): レンダリングモード。`0`は全軌道データのフレームを統合して出力。`1`は`sep_start_num` から `sep_end_num` までの範囲だけを出力。
-- `seqrender` (bool, optional, default: `False`):一度入力の映像データをnpyシーケンスに変換する。
+- `render_mode` (int, doptional, default: `0`): レンダリングモード。`0`は全軌道データのフレームを統合して出力。`1`は`sep_start_num` から `sep_end_num` までの範囲だけを出力。`2`の場合はレンダリングをしない。npyのrawdataの保存のみの場合に使用する。
+- `seqrender` (bool, optional, default: `False`):一度入力の映像データをnpyシーケンスに変換する。（大量のデータを必要とするので注意）
 - `title_atr` (str,optional,default: `None`):出力する映像ファイル名に文字列を追加。
+- `tmp_type_para`(int, optional, default : `False`) : 一時保管データ（Numpy配列）をフレーム毎に保存するか、一定のフレーム数分を束ねたデータとして保存するか。
+- `del_data`(int, optional, default : `True`) :  レンダリングの始まる前に、メモリ容量の多い`data`を消すかどうか。消した場合、この関数の処理後に、`animationout`を実行しようとするとエラーになるので注意。
+- `auto_memory_clear=False`(int, optional, default : `False`) :
+- `memory_report`(int, optional, default : `False`) :
+- `tmp_save` (int, optional, default : `False`) : 映像レンダリングの後に、一時保管データ（Numpy配列）を消すかどうか
+- `render_clip_start` (int, optional, default : `0`) :
+- `render_clip_end` (int, optional, default : `None`) : 
+
+
 ### 使用例
 ```python
 # インスタンスを作成

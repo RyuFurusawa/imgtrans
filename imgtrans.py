@@ -33,7 +33,7 @@ class drawManeuver:
     recfps = 120
     progressbarsize=50
     sepVideoOut = 0 # セパレートしない場合、rawでnpアレイファイルをテンポファイルとしてハードディスクに貯めておき、全てのアレイが準備できてからレンダリングする。そのためHD容量を100GBとか普通に食う。
-    memory_percent = 60 #%
+    memory_percent = 60 #%　映像のレンダリングの際に、確保するメモリーの許容容量。単位は％。アクティブメモリに対しての比率となる。（デフォルトは 60％）
     auto_visualize_out = True
     default_debugmode = False
     audio_form_out = False
@@ -502,7 +502,7 @@ class drawManeuver:
     #     return extra_array
     
     #時間の変化率を維持したまま、始まりと終わり部分を延長させる。fade引数をTrueでスピード０に落ち着かせる。2023.12.11updated 
-    def timeFlowKeepingExtend(self, frame_nums: int, fade: bool = False, intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout"):
+    def timeFlowKeepingExtend(self,frame_nums: int, fade: bool = False, intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout",space_apply=False):
         print(sys._getframe().f_code.co_name)
         if intro == False and outro == False: return
 
@@ -510,8 +510,12 @@ class drawManeuver:
             extra_array = np.zeros((self.data.shape[0] + frame_nums, self.data.shape[1], 2), dtype=np.float64)    
         else:
             extra_array = np.zeros((self.data.shape[0] + frame_nums * 2, self.data.shape[1], 2), dtype=np.float64)
+        
         xyfirstFrame = self.data[0, :, 0]
         xylastFrame = self.data[-1, :, 0]
+        if space_apply:
+            sfirstDiff = self.data[1, :, 0] - self.data[0, :, 0]
+            slastDiff = self.data[-2, :, 0] - self.data[-1, :, 0]
         zfirstDiff = self.data[1, :, 1] - self.data[0, :, 1]
         zlastDiff = self.data[-2, :, 1] - self.data[-1, :, 1]
         fade_speed_array=np.full(self.data.shape[1], -1*fade_speed)
@@ -530,6 +534,9 @@ class drawManeuver:
         if fade:
             introEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if intro else None
             outroEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if outro else None
+            if space_apply :
+                s_introEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if intro else None
+                s_outroEaseArray = np.zeros((frame_nums, self.data.shape[1]), dtype=np.float64) if outro else None
             if intro:
                 for n in range(introEaseArray.shape[0]):
                     if fade_type=="inout":
@@ -538,6 +545,14 @@ class drawManeuver:
                         introEaseArray[n] = easing.inQuad(n, zfirstDiff, -fade_speed_array-zfirstDiff, introEaseArray.shape[0])
                     elif fade_type=="out":
                         introEaseArray[n] = easing.outQuad(n, zfirstDiff, -fade_speed_array-zfirstDiff, introEaseArray.shape[0])
+                    if space_apply :
+                        if fade_type=="inout":
+                            s_introEaseArray[n] = easing.inOutQuad(n, sfirstDiff, -fade_speed_array-sfirstDiff, introEaseArray.shape[0])
+                        elif fade_type=="in":
+                            s_introEaseArray[n] = easing.inQuad(n, sfirstDiff, -fade_speed_array-sfirstDiff, introEaseArray.shape[0])
+                        elif fade_type=="out":
+                            s_introEaseArray[n] = easing.outQuad(n, sfirstDiff, -fade_speed_array-sfirstDiff, introEaseArray.shape[0])
+
             if outro:
                 for n in range(outroEaseArray.shape[0]):
                     if fade_type=="inout":
@@ -546,16 +561,37 @@ class drawManeuver:
                         outroEaseArray[n] = easing.inOutQuad(n, zlastDiff, fade_speed_array-zlastDiff, outroEaseArray.shape[0])
                     elif fade_type=="out":
                         outroEaseArray[n] = easing.inOutQuad(n, zlastDiff, fade_speed_array-zlastDiff, outroEaseArray.shape[0])
+                if space_apply :
+                        if fade_type=="inout":
+                            s_outroEaseArray[n] = easing.inOutQuad(n, slastDiff, fade_speed_array-slastDiff, outroEaseArray.shape[0])
+                        elif fade_type=="in":
+                            s_outroEaseArray[n] = easing.inOutQuad(n, slastDiff, fade_speed_array-slastDiff, outroEaseArray.shape[0])
+                        elif fade_type=="out":
+                            s_outroEaseArray[n] = easing.inOutQuad(n, slastDiff, fade_speed_array-slastDiff, outroEaseArray.shape[0])
 
         for i in range(frame_nums):
             if outro:
-                extra_array[copy_end + i, :, 0] = xylastFrame
+                if space_apply :
+                    if fade:
+                        extra_array[copy_end + i, :, 0] = extra_array[copy_end + i - 1, :, 0] - s_outroEaseArray[i]
+                    else:
+                        extra_array[copy_end + i, :, 0] = extra_array[copy_end + i - 1, :, 0] - slastDiff
+                else : 
+                    extra_array[copy_end + i, :, 0] = xylastFrame
+
                 if fade:
                     extra_array[copy_end + i, :, 1] = extra_array[copy_end + i - 1, :, 1] - outroEaseArray[i]
                 else:
                     extra_array[copy_end + i, :, 1] = extra_array[copy_end + i - 1, :, 1] - zlastDiff
             if intro:
-                extra_array[frame_nums - i - 1, :, 0] = xyfirstFrame
+                if space_apply :
+                    if fade:
+                        extra_array[frame_nums - i - 1, :, 0] = extra_array[frame_nums - i, :, 0] - s_introEaseArray[i]
+                    else:
+                        extra_array[frame_nums - i - 1, :, 0] = extra_array[frame_nums - i, :, 0] - sfirstDiff
+                else :
+                    extra_array[frame_nums - i - 1, :, 0] = xyfirstFrame
+
                 if fade:
                     extra_array[frame_nums - i - 1, :, 1] = extra_array[frame_nums - i, :, 1] - introEaseArray[i]
                 else:
@@ -564,9 +600,9 @@ class drawManeuver:
 
 
     # 与えた軌道配列に、延長させたフレームをプリペンド、アペンドする。XYフレームそれぞれ最終フレームと最初のフレームと同じデータで延長させる。Z(アウト時間）に関しては最終の変化量を維持して延長させる。fade引数をTrueでスピード０に落ち着かせる。
-    def applyTimeFlowKeepingExtend(self,frame_nums:int,fade:bool=False,intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout"):
+    def applyTimeFlowKeepingExtend(self,frame_nums:int,fade:bool=False,intro: bool = True, outro: bool = True,fade_speed=0,fade_type="inout",space_apply=False):
         print(sys._getframe().f_code.co_name)
-        self.data = self.timeFlowKeepingExtend(frame_nums,fade,intro,outro,fade_speed,fade_type)
+        self.data = self.timeFlowKeepingExtend(frame_nums,fade,intro,outro,fade_speed,fade_type,space_apply)
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1])
             
     #配列全体に時間の順方向の流れ（単位はslide_time）を付与する。
@@ -1007,9 +1043,9 @@ class drawManeuver:
     #指定した時間と指定したフレーム（a-frame）の差分を計算して、差分があれば、差分を埋め合わせるように、A-Bの範囲のフレームにたいして、調整する。
     def applyInPartFix(self,target_z,a_frame,b_frame):
         print(sys._getframe().f_code.co_name)
-        gap=(self.data[a_frame,0,1]-target_z)
+        gap=(self.data[a_frame,:,1]-target_z)
         applyrange=b_frame-a_frame
-        if abs(gap) > 1:
+        if np.amax(abs(gap))> 1:
             print("Gapあり",np.amax(gap))
             for k in range(0,b_frame):
                 # self.data[k,:,1]-=gap*((applyrange-k)/applyrange)
@@ -1059,8 +1095,6 @@ class drawManeuver:
         self.sc_resetPositionMap = np.vstack((self.data[:,::np.ceil(self.data.shape[1]/(thread_num-1)).astype(int),1].transpose(),self.data[:,-1,1]))#transpose()で次元入れ替え、"[::a]"で間引き
         self.sc_rateMap = np.zeros(self.sc_resetPositionMap.shape,np.float32)#再生レートの配列
         self.sc_inPanMap = np.vstack((self.data[:,::np.ceil(self.data.shape[1]/(thread_num-1)).astype(int),0].transpose(),self.data[:,-1,0]))#入力panの配列
-        #実験用。リバーブなどに適応することをイメージ
-        self.sc_now_depth =np.zeros(self.data.shape[0],np.float32)#フレーム内に収まる時間の幅
         for i in range(self.sc_resetPositionMap.shape[0]):
             for k in range(self.sc_resetPositionMap.shape[1]):
                 if((k+1)<self.sc_resetPositionMap.shape[1]):
@@ -1068,11 +1102,14 @@ class drawManeuver:
                     self.sc_rateMap[i,k]=(self.sc_resetPositionMap[i,k+1]-self.sc_resetPositionMap[i,k])/(self.recfps/self.outfps)
                 else:
                     self.sc_rateMap[i,k]=self.sc_rateMap[i,k-1]
-        #実験用。リバーブなどに適応することをイメージ
+        
+        #実験用。リバーブなどに適応する。また、fpsの異なる複数の映像ソースを適宜選択しながらレンダリングする際の、選択判断の材料とする。
+        self.sc_now_depth =np.zeros(self.data.shape[0],np.float32)#フレーム内に収まる時間の幅
         for i in range(self.sc_now_depth.shape[0]):
             self.sc_now_depth[i]=abs(np.amax(self.data[i,:,1])-np.amin(self.data[i,:,1]))
-        array_to_adjust = self.recfps/(np.clip(self.sc_now_depth,1, None)/self.scan_nums)
         
+        #array to adjust : 
+        array_to_adjust = self.recfps/(np.clip(self.sc_now_depth,1, None)/self.data.shape[1])#np.clipで1以上の数値とする。除算のエラー対策
         # 各要素に対して、より大きい近似値を選ぶ
         # np.digitizeを使用して、各要素が指定されたビンのどこに属するかを見つける
         if len(self.some_recfps_array)>0:
@@ -1372,8 +1409,7 @@ class drawManeuver:
                 for x_position in change_indices:
                     ax2.axvline(x=x_position+s_frame, color='blue', linestyle='--', linewidth=0.5)
                     time_text = frames_to_min_sec(x_position+s_frame, self.outfps)
-                    ax2.text(x_position+s_frame, ax2.get_ylim()[1], f"{x_position} ({time_text})", rotation=90, verticalalignment='top',color='blue')
-
+                    ax2.text(x_position+s_frame, ax2.get_ylim()[1], f"{x_position+s_frame} ({time_text})", rotation=90, verticalalignment='top',color='blue')
                 # ax2_twin.plot((self.sc_now_depth/self.scan_nums), color='blue', linestyle='--', linewidth=1.0)  # 分散幅をプロット
                 ax2_twin.set_ylabel('Rendering FPS')  # ラベルを設定
                 # メモリの設定
@@ -2012,11 +2048,21 @@ class drawManeuver:
         print("All Done",lnterval,"sec")
         append_to_logfile("All Done"+str(lnterval)+"sec")
     # 映像のレンダリング
-    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False,title_atr:str=None, tmp_type_para=0,del_data=True,auto_memory_clear=True,memory_report=False,tmp_save = False ):
+    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,XY_TransOut=False,render_mode=0,seqrender=False,title_atr:str=None,tmp_type_para=False,del_data=True,auto_memory_clear=False,memory_report=False,tmp_save = False,render_clip_start=0,render_clip_end=None):
+        if np.amin(self.data[:,:,-1])<0:
+            print("z<0,error")
+            append_to_logfile("z<0,error")
+            return
+        if np.amax(self.data[:,:,-1])>self.count:
+            print("z>video_count,error,data_zmax:",np.amax(self.data[:,:,1])," > count:",self.count)
+            append_to_logfile("z>video_count,error,data_zmax:"+str(np.amax(self.data[:,:,1]))+" > count:"+str(self.count))
+            return
         #self.outfpsはグローバルで定義
+        if render_clip_end == None : render_clip_end = self.data.shape[0]
+        render_range =render_clip_end-render_clip_start
         color_depth = 8
         num_channels = 3
-        file_size_bytes = (self.data.shape[0]*self.slit_length*self.data.shape[1] * color_depth * num_channels) / 8
+        file_size_bytes = (render_range*self.slit_length*self.data.shape[1] * color_depth * num_channels) / 8
         # Convert the file size to megabytes (1 MB = 1024 * 1024 bytes)
         file_size_megabytes = file_size_bytes / (1024 * 1024)
         if separate_num == None :
@@ -2034,28 +2080,25 @@ class drawManeuver:
         append_to_logfile("memory_usage="+str(((file_size_megabytes / separate_num) / (psutil.virtual_memory().available/(1024)**2))*100)+"%")
         append_to_logfile(videostr)
         rotate_direction = False
-        print("framecount=",self.data.shape[0],"(",self.data.shape[0]/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
-        print("z min-max =",np.amin(self.data[:,:,-1]),np.amax(self.data[:,:,-1]))
+        print("framecount=",render_range,"(",render_range/self.recfps,"sec)",XY_Name+"(out)=",self.data.shape[1],"refer(in"+XY_Name+"-out"+XY_Name+"-ZP)=",self.data.shape[2])
+        print("z min-max =",np.amin(self.data[render_clip_start:render_clip_end,:,-1]),np.amax(self.data[render_clip_start:render_clip_end,:,-1]))
         append_to_logfile("outfps="+str(self.outfps))
-        append_to_logfile("framecount="+str(self.data.shape[0]))
-        append_to_logfile("z min-max ="+str(np.amin(self.data[:,:,-1]))+"-"+str(np.amax(self.data[:,:,-1])))
-        if np.amin(self.data[:,:,-1])<0:
-            print("z<0,error")
-            return
-        if np.amax(self.data[:,:,-1])>self.count:
-            print("z>video_count,error,data_zmax:",np.amax(self.data[:,:,-1])," > count:",self.count)
-            return
+        append_to_logfile("framecount="+str(render_range))
+        append_to_logfile("z min-max ="+str(np.amin(self.data[render_clip_start:render_clip_end,:,-1]))+"-"+str(np.amax(self.data[render_clip_start:render_clip_end,:,-1])))
+       
         #audioようにfloatで計算していたのをintへ戻す。この方法だと小数点以下は切り捨て
-        wr_array = self.data[:,:,1:].astype(np.int32) if self.data.shape[2] == 3 else self.data.astype(np.int32)
+        wr_array = self.data[render_clip_start:render_clip_end,:,:].astype(np.int32)
 
         # 分割の切れ目の数値を格納する配列を初期化
         cut_points = []
-
+        if render_clip_start != 0 :cut_points.append(render_clip_start)
         # 切れ目を計算して配列に追加
         for i in range(1,separate_num):
             cut = wr_array.shape[0] * i // separate_num  # 整数の除算を使用して切れ目を計算
-            cut_points.append(cut)
-        self.maneuver_2dplot(x_positions=cut_points)
+            cut_points.append(cut+render_clip_start)
+        if render_clip_end != self.data.shape[0] : cut_points.append(render_clip_end)
+        self.maneuver_2dplot(x_positions=cut_points,s_frame=render_clip_start,e_frame=render_clip_end)
+
         
         if del_data :
             #メモリの最適化のため
@@ -2098,23 +2141,22 @@ class drawManeuver:
             seq_read_e=int(seq_read_s+images_frame_num)#分割できなかった余剰フレームは最後の演算の時に加える
 
             #ビデオの設定
-            if self.sepVideoOut == 1 :
-                print("video-preference")
-                fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
-                if self.scan_direction%2==1 :
-                    video = cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.height)),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.height),int(wr_array.shape[1])),1)
-                else :
-                    video = cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.width),int(wr_array.shape[1])),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.width)),1)
+            # if self.sepVideoOut == 1 :
+            #     print("video-preference")
+            #     fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
+            #     if self.scan_direction%2==1 :
+            #         video = cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.height)),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.height),int(wr_array.shape[1])),1)
+            #     else :
+            #         video = cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(self.width),int(wr_array.shape[1])),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'sep_index='+str(s)+'.mp4', fourcc, self.outfps,(int(wr_array.shape[1]),int(self.width)),1)
             interval_first = None
-            block_num = 0
             minz = np.amin(wr_array[seq_read_s:seq_read_e,:,1])
             maxz = np.amax(wr_array[seq_read_s:seq_read_e,:,1])
             print("minz",minz)
             print("maxz",maxz)
-            #depth が低いー高い
+            #depthが低いー高い
             # print("depth=", self.depth_to_sel_recfps[seq_read_s:seq_read_e])
             # 配列内の全ての値が同一かどうかをチェック
-            if len(self.depth_to_sel_recfps)> 0 :
+            if len(self.depth_to_sel_recfps[render_clip_start+seq_read_s:render_clip_start+seq_read_e]) > 0 :
                 fps_conversion = True
             else : fps_conversion = False
             print("fps_conversion=",fps_conversion)
@@ -2337,20 +2379,20 @@ class drawManeuver:
                 else :
                     # fpsの違う映像ソースの切り替え
                     if fps_conversion:
-                        renderfps_array=np.unique(self.depth_to_sel_recfps[seq_read_s:seq_read_e])
+                        renderfps_array=np.unique(self.depth_to_sel_recfps[render_clip_start+seq_read_s:render_clip_start+seq_read_e])
                         print(renderfps_array)
                         # 指定された値
                         for fps in renderfps_array:
                             # 配列内でvが続いているインデックスを見つける
                             print("sel fps=",fps)
-
                             self.cap=cv2.VideoCapture(self.another_videos[self.some_recfps_array.index(fps)])
                             print("video reload",self.another_videos[self.some_recfps_array.index(fps)])
                             print(self.cap.get(cv2.CAP_PROP_FPS))
                             print(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                            indices_raw = np.where(self.depth_to_sel_recfps[seq_read_s:seq_read_e] == fps)[0]
+                            indices_raw = np.where(self.depth_to_sel_recfps[render_clip_start+seq_read_s:render_clip_start+seq_read_e] == fps)[0]
                             diff = np.diff(indices_raw)
                             breaks = np.where(diff > 1)[0] + 1
+                            
                             # Splitting the array into subarrays of consecutive numbers
                             some_indices = np.split(indices_raw,breaks)
                             print(len(some_indices))
@@ -2360,11 +2402,10 @@ class drawManeuver:
                                 print("range_start,range_end=",range_start,range_end)
                                 fps_scale=self.renderfps_scales[self.some_recfps_array.index(fps)]
                                 print("fps_scale=",fps_scale)
+
                                 #numの切り替え,FPSに応じて、フレーム数を掛け算しないといけない。
                                 minz = np.amin(wr_array[range_start:range_end ,:,1])*fps_scale
                                 maxz = np.amax(wr_array[range_start:range_end ,:,1])*fps_scale
-                                # minz = np.amin(wr_array[range_start:range_end ,:,1])
-                                # maxz = np.amax(wr_array[range_start:range_end ,:,1])
                                 print("minz",minz)
                                 print("maxz",maxz)
                                 totalnum=maxz-minz
@@ -2398,9 +2439,6 @@ class drawManeuver:
                                             else :
                                                 for i in range(range_start,range_end):
                                                     wr =np.array(wr_array[i])
-                                                    # indices = np.where(wr[:, 1] > num/fps_scale ＆ wr[:, 1] < (num+1)/fps_scale)
-                                                    # indices = np.where((wr[:, 1] >= num/fps_scale) & (wr[:, 1] < (num+1)/fps_scale))
-
                                                     indices = np.where(np.floor(wr[:, 1]*fps_scale) == np.floor(num))
                                                     # print(num,i,len(indices[0]))
                                                     for p in indices[0]:
@@ -2410,9 +2448,9 @@ class drawManeuver:
                                         num += 1
                                         etime = time.time()
                                         newterval=(etime - stime)/(len(indices[0])+1)*1000
-                                        # if Interval*2.5 < newterval and Interval!=0 and auto_memory_clear : 
-                                        #     gc.collect()
-                                        #     print("memoryclear", newterval ,Interval)
+                                        if Interval*3 < newterval and Interval!=0 and auto_memory_clear : 
+                                            gc.collect()
+                                            print("memoryclear", newterval ,Interval)
                                         Interval = newterval
                                         bar= '■'*int((num-minz)*progresscale) + "."*int((totalnum-(num-minz))*progresscale)
                                         #print(f"\r\033[K[\033[33m{bar}\033[39m] frame{(num-minz)/totalnum*100:.02f}%({minz}>{num}>{maxz}) Slits{slitscounter/totalslits*100:.02f}%({slitscounter}/{int(totalslits)}) : {round(Interval,2)}({round(interval_first,2)})sec/f",end="")
@@ -2433,7 +2471,7 @@ class drawManeuver:
                         if self.sepVideoOut == 1 or separate_num == 1:
                             print("video-preference",round(Interval,2))
                             fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
-                            self.out_videopath=videostr +'.mp4'
+                            self.out_videopath = videostr +"_"+str(s)+"("+str(seq_read_s+render_clip_start)+"-"+str(seq_read_e+render_clip_start)+")"+'.mp4'
                             if self.scan_direction%2 == 1 :
                                 video = cv2.VideoWriter(self.out_videopath, fourcc, self.outfps,(int(wr_array.shape[1]),int(self.height)),1) if XY_TransOut == False else  cv2.VideoWriter(videostr +'.mp4', fourcc, self.outfps,(int(self.height),int(wr_array.shape[1])),1)
                             else :
@@ -2473,7 +2511,7 @@ class drawManeuver:
                                 print("tmp-npydata_saved",images.shape,knterval,"sec")
                             else : 
                                 print("direct render")
-                                for i in range(int(s*wr_array.shape[0]/separate_num),int((s+1)*wr_array.shape[0]/separate_num)):
+                                for i in range(images.shape[0]):
                                     wstime = time.time()
                                     if out_type != 1:
                                         img_name="img/"+self.ORG_NAME+"_"+str(i)+"p"+self.imgtype 
@@ -2486,19 +2524,19 @@ class drawManeuver:
                                     gc.collect()
                                     wetime = time.time()
                                     knterval = round(wetime-wstime,2)
-                                    ci=i-int(s*wr_array.shape[0]/separate_num)
-                                    bar= '■'*int(ci*writingScale)+ "."*int((writingTotalNum-ci)*writingScale)
+                                    ci=i
+                                    bar= '■'*int(ci*writingScale)+ "."*int((images.shape[0]-ci)*writingScale)
                                     if self.sepVideoOut == 1 or separate_num == 1:
-                                        print(f"\r\033[K[\033[31m{bar}\033[39m] {ci/writingTotalNum*100:.02f}% ({knterval:.02f})sec/f",end="")
+                                        print(f"\r\033[K[\033[31m{bar}\033[39m] {ci/images.shape[0]*100:.02f}% ({knterval:.02f})sec/f",end="")
                                     else :
-                                        print(f"\r\033[K[\033[32m{bar}\033[39m] {ci/writingTotalNum*100:.02f}% ({knterval:.02f})sec/f",end="")
+                                        print(f"\r\033[K[\033[32m{bar}\033[39m] {ci/images.shape[0]*100:.02f}% ({knterval:.02f})sec/f",end="")
                                 if self.sepVideoOut == 1  or separate_num == 1 : video.release()
                         del images
                         print("done:",s+1,"/",separate_num)
                         render_rate = round((time.time()-sstime)/ ((wr_array.shape[0]/separate_num) / 30),2)
                         # 配列の要素を文字列に変換し、カンマで結合して1つの文字列にする
                         renderfps_string = ', '.join(renderfps_array.astype(str))
-                        append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%"+" fps=[" + renderfps_string + "]")
+                        append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+"("+str(seq_read_s+render_clip_start)+"-"+str(seq_read_e+render_clip_start)+")"+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%"+" fps=[" + renderfps_string + "]")
                         # append_to_logfile(str(psutil.virtual_memory()))
                         print(psutil.virtual_memory())
                         print("\r")
@@ -2627,7 +2665,8 @@ class drawManeuver:
                         render_rate = round((time.time()-sstime)/ ((wr_array.shape[0]/separate_num) / 30),2)
                         # 配列の要素を文字列に変換し、カンマで結合して1つの文字列にする
                         # renderfps_string = ', '.join(renderfps_array.astype(str))
-                        append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%")
+                        # append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%")
+                        append_to_logfile("done:"+str(s+1)+"/"+str(separate_num)+"("+str(seq_read_s+render_clip_start)+"-"+str(seq_read_e+render_clip_start)+")"+" "+str(round(time.time()-sstime,2))+"sec wrote-Slits:"+str(int(totalslits))+"("+str(round(totalslits/(wr_array.shape[0]*wr_array.shape[1])*100,2))+"%) scan-Frames:"+str(minz)+"->"+str(maxz)+" render_rate="+str(render_rate)+" memory="+str(psutil.virtual_memory().percent)+"%")
                         # append_to_logfile(str(psutil.virtual_memory()))
                         print(psutil.virtual_memory())
                         print("\r")
@@ -2643,7 +2682,7 @@ class drawManeuver:
                                 writer.writerows(memory_stats)
                         gc.collect()
         if self.cap != None and  seqrender == False: self.cap.release()
-        if self.sepVideoOut != 1 and out_type != 0 and separate_num != 1:
+        if self.sepVideoOut != 1 and out_type != 0 and separate_num != 1 and render_mode != 2:
             print("video-preference")
             fourcc = cv2.VideoWriter_fourcc('m','p','4','v')#コーデック指定
             self.out_videopath=videostr +'.mp4'
@@ -2985,6 +3024,7 @@ class drawManeuver:
 
     def interpolation(self,frame_nums,i_direction,z_direction,axis_position,s_reversal=0,z_reversal=0,cycle_degree=90,extra_degree=0,zslide=0,speed_round = True,rrange=[0,1],zscale=1):
         wr_array= [] 
+        zslide= zslide * self.xyt_boxel_scale
         zscale = zscale * self.xyt_boxel_scale
         print("sd=",self.scan_direction)
         for i in range(0,frame_nums):
@@ -3099,10 +3139,33 @@ class drawManeuver:
     def rootingA_interporation(self,FRAME_NUMS,loop_num=2,axis_first_p=0,speed_round=True):
         ap=axis_first_p
         r=0
+        z=0
+        id=0
         for i in range(loop_num):
-            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=0,z_direction=0,axis_position=ap%2,reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
+            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=id%2,z_direction=z%2,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
             r+=1
-            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=ap%2,reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
+            z+=1
+            id+=1
+            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=id%2,z_direction=z%2,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
+            ap+=1
+            z+=1
+            id+=1
+        self.maneuver_log("IP"+str(FRAME_NUMS)+"(rootingA)")
+        # addInterpolationの連結性のある８パターンの次々に実行して配列に加えていく。できた配列を返す。
+    def rootingAA_interporation(self,FRAME_NUMS,loop_num=2,axis_first_p=0,speed_round=True):
+        ap=axis_first_p
+        r=0
+        for i in range(loop_num):
+            if r%2 == 0 :
+                self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=0,z_direction=0,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
+            else :
+                self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=0,z_direction=0,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round,cycle_degree=180,extra_degree=-90,rrange=[0.5,1])
+            r+=1
+            if r%2 == 1 :
+                self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round)
+            else : 
+                self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=ap%2,s_reversal=r%2,z_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = speed_round,cycle_degree=180,extra_degree=0,rrange=[0,0.5])
+            
             ap+=1
         self.maneuver_log("IP"+str(FRAME_NUMS)+"(rootingA)")
           
@@ -3475,6 +3538,8 @@ class drawManeuver:
         if zslide == 0:
             if auto_zslide and len(self.data)>0:
                 permit_auto_zslide=True
+        else :
+            zslide= zslide * self.xyt_boxel_scale
         wr_array=[]
         defcenter=end_center-start_center
         csinarray=[]
@@ -3694,6 +3759,7 @@ class drawManeuver:
         timepoints=書き出す総フレームに対する時間軸のキーフレーム  
     wave_type=0:サイン波
     wave_type=1:三角波      
+    connect_round=キーフレーをリニアかイーズインアウトするか？　オプションで、配列で送った場合に、かくキーポイントの保管方法を設定できる。
     '''
     def addBlowupTrans(self,frame_nums,deg=360,speed_round = True,connect_round=1,timevalues=[],timepoints=[],timecenter=[],extra_degree=0,wave_type=0,zslide=0,z_autofit=False):
         #2021.09.02　New。
@@ -3714,6 +3780,8 @@ class drawManeuver:
                 for i in range(0,len(timevalues)):timepoints.append(1/(len(timevalues)-1)*i)
             if len(timecenter) == 0:
                 timecenter=np.full(len(timevalues), 0.5)
+            if len(connect_round) != len(timevalues):
+                connect_round= np.full(len(timevalues),connect_round)
 
         wr_array=[]
         print("timevalues:",timevalues,"timepoints:",timepoints)
@@ -3742,7 +3810,9 @@ class drawManeuver:
             # ステップiの進行度（0から1までの範囲）
             ts = (i-frame_nums*timepoints[fn])/(frame_nums*(timepoints[fn+1]-timepoints[fn])) 
             # 細かい動きをつける場合。リニアかノンリニアか変数で選択
-            ts = ts if connect_round == 0 else ((math.sin(math.radians(ts*180-90)))/2+0.5)
+            # ts = ts if connect_round == 0 else ((math.sin(math.radians(ts*180-90)))/2+0.5)
+            ts = ts if connect_round[fn] == 0 else ((math.sin(math.radians(ts*180-90)))/2+0.5)
+            
             # print(fn,i,ts)
             if self.scan_direction == 1 : 
                 ajstlen=timevalues[fn+1]/self.width+(gaptime/self.width)-(gaptime/self.width)*ts
@@ -3773,6 +3843,7 @@ class drawManeuver:
         if len(self.data) != 0: self.data = np.vstack((self.data,np.array(wr_array)))
         else: self.data=np.array(wr_array)
         self.maneuver_log((sys._getframe().f_code.co_name).split("add")[1].split("Trans")[0]+str(frame_nums)+"-deg"+str(deg))
+        return np.array(frame_nums * np.array(timepoints),dtype='int')
 
 # リストを最下層の要素数が均等になるように分割
 def split_list_based_on_elements(original_list, k):
@@ -3857,13 +3928,13 @@ def closest_value(start_value, end_value, num_values,zRange):
     return min(rounded_values, key=lambda x: abs(x - zRange))
 #blowupTransのTimePoint,timevalueの値からの調整
 def search(num,frame_nums,timepoints):
-        vvv=0
-        for h in range(0,len(timepoints)-1):
-            top=timepoints[h]*frame_nums
-            bottom=timepoints[h+1]*frame_nums
-            if num >= top and num < bottom:
-                vvv=h
-        return vvv
+    vvv=0
+    for h in range(0,len(timepoints)-1):
+        top=timepoints[h]*frame_nums
+        bottom=timepoints[h+1]*frame_nums
+        if num >= top and num < bottom:
+            vvv=h
+    return vvv
 
 def addCsvHeader(d):
     print(sys._getframe().f_code.co_name)
