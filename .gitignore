@@ -99,3 +99,5 @@
 /CustomCycle_sample copy.py
 
 __pycache__
+
+.DS_Store

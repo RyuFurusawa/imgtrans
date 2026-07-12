@@ -23,6 +23,7 @@ A programming tool for manipulating time and space in video data. It's primarily
   - [5. Rendering](#5-rendering)
     - [Structure of data](#structure-of-data)
     - [Video Rendering](#video-rendering)
+    - [Color Pipeline in Video Rendering](#color-pipeline-in-video-rendering)
     - [Audio Rendering](#audio-rendering)
         - [4 CSV of Maneuver Data](#4-csv-data-of-maneuver)
         - [4 SCD Files](#4-scd-files)
@@ -268,6 +269,245 @@ your_maneuver.transprocess(out_type=0) #0=still, 1=video, 2=both
 ```
 For details, refer to [`transprocess`](#transprocess-method).
 
+#### Color Pipeline in Video Rendering
+
+This section describes the complete color conversion pipeline from source video to rendered output. Understanding this flow is critical for maintaining color accuracy, especially with HDR (PQ/HLG) content in BT.2020 color space.
+
+![Color Pipeline Diagram](images/color_pipeline.svg)
+
+##### Overview
+
+The rendering pipeline has two modes: the **RGB pipeline** (legacy, used for H.265 and HDR transfer conversion) and the **YUV-native pipeline** (default for ProRes 10bit+, bypasses RGB roundtrip for maximum color accuracy). See [YUV-Native Pipeline](#yuv-native-pipeline-rgb-roundtrip-bypass) for details.
+
+The RGB pipeline involves two separate color space conversions:
+
+```
+Source Video (YUV 4:2:2 10bit)
+    │
+    ▼  [PyAV decode]
+    │  frame.to_ndarray(format="rgb48le")
+    │  YUV → RGB conversion using source video's color matrix
+    ▼
+RGB 48bit Linear Buffer (numpy uint16 array)
+    │
+    ▼  [Slit-scan processing]
+    │  Pixel remapping based on maneuver data (z-coordinates → source frames)
+    │  No color space conversion occurs here — raw RGB values are copied
+    ▼
+Composited RGB Frame (numpy uint16 array)
+    │
+    ▼  [Optional: HDR Transfer Conversion]
+    │  HLG→PQ or PQ→HLG via EOTF/OETF if force_hdr_mode differs from input
+    │  If same transfer: passthrough (no conversion)
+    ▼
+FFmpeg stdin (rawvideo rgb48le)
+    │
+    ▼  [FFmpeg encode]
+    │  RGB → YUV conversion using specified color matrix
+    │  Encode to ProRes / H.265 / etc.
+    ▼
+Output Video File
+```
+
+##### Step 1: Source Frame Reading (YUV → RGB)
+
+For HDR/10bit+ content, frames are read via **PyAV** (not OpenCV):
+
+```python
+# imgtrans2026.py — PyAV decode path
+pyav_fmt = "rgb48le"  # 16bit per channel RGB
+img = frame.to_ndarray(format=pyav_fmt)
+```
+
+PyAV internally uses libswscale for the YUV→RGB conversion. The conversion matrix is determined by the source video's embedded color metadata (`color_primaries`, `color_trc`, `colorspace`).
+
+For SDR/8bit content, OpenCV is used instead:
+```python
+# OpenCV decode path
+self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(minz))
+ret, img = self.cap.read()  # Returns BGR uint8
+```
+
+##### Step 2: Slit-Scan Composition
+
+The maneuver `data` array maps each output pixel to a source frame position (z-coordinate). The rendering engine seeks to the corresponding source frame, extracts the slit (column or row), and places it into the output image buffer.
+
+**No color conversion occurs at this stage** — raw RGB/BGR values are directly copied from source frame to output buffer.
+
+##### Step 3: HDR Transfer Function Conversion (Optional)
+
+If `force_hdr_mode` is set and differs from the input transfer function, an explicit EOTF→OETF conversion is applied:
+
+| Input | Output (`force_hdr_mode`) | Conversion |
+|-------|---------------------------|------------|
+| HLG (`arib-std-b67`) | PQ (`smpte2084`) | `hlg_eotf()` → linear → `pq_oetf()` |
+| PQ (`smpte2084`) | HLG (`arib-std-b67`) | `pq_eotf()` → linear → `hlg_oetf()` |
+| Same as input | Same | Passthrough (no conversion) |
+
+```python
+# Example: HLG input → PQ output
+rgb = frame.astype(np.float32) / 65535.0
+rgb_lin = self.hlg_eotf(rgb)      # HLG → Linear
+rgb_out = self.pq_oetf(rgb_lin)   # Linear → PQ
+rgb16 = np.clip(rgb_out * 65535.0, 0, 65535).astype(np.uint16)
+```
+
+##### Step 4: FFmpeg Output (RGB → YUV Encode)
+
+The composited RGB frame is piped to FFmpeg via stdin as `rawvideo rgb48le`. FFmpeg performs the final RGB→YUV conversion and encodes to the target codec.
+
+**Critical: input color space metadata must be declared** on the rawvideo input so that FFmpeg uses the correct RGB→YUV conversion matrix. Without this, FFmpeg defaults to BT.709, which produces incorrect colors (especially greens) for BT.2020 content.
+
+The `_build_ffmpeg_cmd` method constructs the FFmpeg command with color metadata on **both input and output sides**:
+
+**ProRes 422/4444 output:**
+```
+ffmpeg -y
+  # --- Input side (declares what the RGB data is) ---
+  -f rawvideo
+  -pix_fmt rgb48le
+  -color_primaries bt2020        ← Tells FFmpeg the RGB is BT.2020
+  -color_trc smpte2084           ← Transfer function (PQ or HLG)
+  -colorspace bt2020nc           ← YUV conversion matrix to use
+  -s:v {width}x{height}
+  -r {fps}
+  -i -
+  # --- Output side (codec + metadata tags) ---
+  -c:v prores_ks
+  -pix_fmt yuv422p10le
+  -profile:v 3                   ← 422 HQ
+  -vendor apl0
+  -color_primaries bt2020        ← Output metadata tag
+  -color_trc smpte2084           ← Output metadata tag
+  -colorspace bt2020nc
+  -color_range tv
+  output.mov
+```
+
+**H.265 (HEVC) HDR output:**
+```
+ffmpeg -y
+  # --- Input side ---
+  -f rawvideo
+  -pix_fmt rgb48le
+  -color_primaries bt2020
+  -color_trc smpte2084
+  -colorspace bt2020nc
+  -s:v {width}x{height}
+  -r {fps}
+  -i -
+  # --- Output side ---
+  -c:v libx265
+  -pix_fmt yuv420p10le
+  -tag:v hvc1
+  -x265-params hdr-opt=1:repeat-headers=1:
+    colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:
+    master-display=G(13250,34500)B(7500,3000)R(34000,16000)
+    WP(15635,16450)L(10000000,50):max-cll=1000,400
+  output.mp4
+```
+
+##### Color Metadata Detection
+
+On initialization, `drawManeuver` automatically detects the source video's color metadata via `ffprobe`:
+
+```python
+self.input_color_primaries  # e.g., "bt2020"
+self.input_transfer         # e.g., "smpte2084" (PQ) or "arib-std-b67" (HLG)
+self.input_colorspace       # e.g., "bt2020nc"
+self.inputmovfps            # e.g., 59.94005994 (from cv2.CAP_PROP_FPS)
+```
+
+These values determine:
+1. Which EOTF/OETF to use for transfer function conversion
+2. Which color metadata flags to pass to FFmpeg for output encoding
+3. Which ICC profile to embed in still image output (PNG/TIFF)
+
+##### Output Type Summary
+
+| `out_type` | Codec | Pixel Format | Color Depth | Chroma | HDR Metadata |
+|------------|-------|-------------|-------------|--------|-------------|
+| `OUT_H264` (1) | libx264 | yuv420p | 8bit | 4:2:0 | None (SDR) |
+| `OUT_H265` (2) | libx265 | yuv420p10le | 10bit | 4:2:0 | x265-params (PQ/HLG) |
+| `OUT_PRORES_422` (3) | prores_ks | yuv422p10le | 10bit | 4:2:2 | colr atom (PQ/HLG) |
+| `OUT_PRORES_4444` (4) | prores_ks | yuv444p10le | 10bit | 4:4:4 | colr atom (PQ/HLG) |
+| `OUT_H265_SDR` (5) | libx265 | yuv422p10le | 10bit | 4:2:2 | BT.709 (SDR) |
+| `OUT_PRORES_422_SDR` (6) | prores_ks | yuv422p10le | 10bit | 4:2:2 | BT.709 (SDR) |
+| `OUT_H265_HW` (7) | hevc_videotoolbox | p010le | 10bit | 4:2:0 | PQ/HLG |
+
+##### Notes on Color Accuracy
+
+- **ProRes 422 (`OUT_PRORES_422`)** is recommended for archival HDR rendering as it preserves 4:2:2 chroma subsampling, matching typical HDR camera sources.
+- **H.265 (`OUT_H265`)** uses 4:2:0 chroma subsampling, which discards half the chroma resolution compared to 4:2:2. This can cause subtle color differences, especially in saturated greens and reds.
+- **SDR 8bit (`OUT_H264`)** input goes through OpenCV (BGR uint8), not PyAV. The `_write_video_frame` method handles BGR→RGB channel reorder before piping to FFmpeg.
+- When the source and output share the same transfer function (e.g., both PQ), **no EOTF/OETF conversion is applied** — the 16bit RGB values pass through unchanged, preserving maximum precision.
+
+##### YUV-Native Pipeline (RGB Roundtrip Bypass)
+
+従来のレンダリングパイプラインでは、ソース動画の YUV フレームを PyAV で RGB に変換し、スリットスキャン処理後に FFmpeg で再度 YUV にエンコードしていました。この YUV→RGB→YUV ラウンドトリップにおいて、libswscale の BT.2020nc 色行列変換に**系統的な Cr チャネルバイアス（10bit で約 -1.0）** が存在し、出力映像の緑色が不自然に鮮やかになる問題がありました。
+
+YUV-native パイプラインでは、この RGB 変換を完全にスキップします:
+
+```
+Source Video (YUV 4:2:2 10bit)
+    │
+    ▼  [PyAV decode — プレーン直接取得]
+    │  frame.planes[0] → Y  (full width)
+    │  frame.planes[1] → Cb (half width, 4:2:2)
+    │  frame.planes[2] → Cr (half width, 4:2:2)
+    │  ※ RGB変換なし — YUVデータをそのまま取得
+    ▼
+Y / Cb / Cr Buffers (numpy uint16 arrays, separate)
+    │
+    ▼  [Slit-scan processing in YUV space]
+    │  Y: フル解像度でスリット合成
+    │  Cb/Cr: 半幅でスリット合成（column_index // 2）
+    │  Numba JIT で高速化
+    ▼
+Composited Y / Cb / Cr Frames
+    │
+    ▼  [FFmpeg encode — YUV直接入力]
+    │  planar yuv422p10le として stdin にパイプ
+    │  ※ FFmpeg側の RGB→YUV 変換も不要
+    ▼
+Output Video File (ProRes 422/4444)
+```
+
+**有効条件（自動判定）:**
+- 入力が 10bit 以上（`is_morethan_8bit == True`）
+- 出力が ProRes 422 または ProRes 4444
+- トランスファー関数の変換が不要（入力と出力が同一、または `force_hdr_mode` 未指定）
+- PyAV コンテナが利用可能
+
+```python
+# 判定ロジック（new_transprocess 内）
+use_yuv_native = (
+    self.is_morethan_8bit
+    and out_type in (self.OUT_PRORES_422, self.OUT_PRORES_4444)
+    and _hdr_mode_matches
+    and self.container is not None
+)
+```
+
+**改善効果:**
+| 指標 | RGB パス (従来) | YUV-native パス |
+|------|----------------|-----------------|
+| Cr bias (10bit) | -1.0 (系統的) | -0.05 (無視可能) |
+| 緑色シフト | 目視で明確 | 検出不能 |
+| 処理速度 | 基準 | 約10-20%高速 |
+
+**制限事項:**
+- `force_hdr_mode` で HLG↔PQ 変換を行う場合、EOTF/OETF 処理に RGB 空間が必要なため、従来の RGB パイプラインにフォールバックします。
+- H.265 出力（`OUT_H265`）は現在 RGB パスのみ対応です。H.265 では入力側の色メタデータ指定で正しい色行列が使用されるため、実用上の色精度は十分です。
+- SDR 8bit 入力（OpenCV パス）には適用されません。
+
+**関連メソッド:**
+- `_process_frame_yuv()` — YUV空間でのスリットスキャン処理
+- `_process_frame_vertical_yuv_jit()` / `_process_frame_horizontal_yuv_jit()` — Numba JIT 高速化カーネル
+- `_render_images_to_sink_yuv()` — YUV バッファの動画出力
+- `_build_ffmpeg_cmd(use_yuv_native=True)` — yuv422p10le 入力の FFmpeg コマンド構築
+- `_write_video_frame(use_yuv_native=True)` — Y/Cb/Cr プレーンの書き出し
+
 #### Audio Rendering
 Audio processing itself is done in SuperCollider.  
 First, output the code to be loaded in SuperCollider from the class method `scd_out`.  
@@ -336,13 +576,22 @@ Please synchronize the video and audio in a video editing software and then re-e
 This class is the main component of the Imgtrans library.
 
 ### Class Variables:
-- `imgtype`: Format of the still image in rendering (default is ".jpg")
+- `imgtype`: Format of the still image in rendering. `.png` and `.tif` support 16-bit; `.jpg` is 8-bit only (default is `".png"`)
 - `img_size_type`: Setting for the output image size. Given the height as h and width as w of the input video, `0`:h,w `1`:w,w*2 `2`: Total number of frames `3`: square (default is `0`)
-- `outfps`: Frame rate for the output (default is 30)
-- `auto_visualize_out`: Setting for automatic visualization (default is True)
-- `default_debugmode`: Default debug mode setting (default is False)
-- `audio_form_out`: Setting for audio format output (default is False)
-- `embedHistory_intoName`: Setting for embedding history into the name (default is True)
+- `outfps`: Frame rate for the output (default is `30`)
+- `recfps`: Recording frame rate, typically overwritten by input video FPS on init (default is `120`)
+- `progressbarsize`: Width of the console progress bar in characters (default is `50`)
+- `sepVideoOut`: Separate rendering mode. `0` = accumulate all npy temp files on disk before rendering (can consume 100GB+); non-zero = render segments directly (default is `0`)
+- `memory_percent`: Memory usage limit as a percentage of active memory during rendering (default is `60`)
+- `auto_visualize_out`: Setting for automatic visualization (default is `True`)
+- `default_debugmode`: Default debug mode setting (default is `False`)
+- `audio_form_out`: Setting for audio format output (default is `False`)
+- `embedHistory_intoName`: Setting for embedding history into the name (default is `True`)
+- `some_recfps_array`: List of recording FPS values for multi-FPS rendering. Set externally before calling rendering methods (default is `[]`)
+- `plot_w_inc`: Width in inches for the 2D plot output (default is `5`)
+- `plot_h_inc`: Height in inches for the 2D plot output (default is `9`)
+- `xyt_boxel_scale`: Aspect ratio scale for the XYT spacetime cube. When testing with lower resolution video, set this to compensate for resolution differences (default is `1`)
+- `OUT_STILL`, `OUT_H264`, `OUT_H265`, `OUT_PRORES_422`, `OUT_PRORES_4444`, `OUT_H265_SDR`, `OUT_PRORES_422_SDR`: Output type constants (`0`-`6`) used with the `out_type` parameter in rendering methods
 
 ### initialization
 The class initialization method takes the attributes of the video path, scan direction, data, and folder name as arguments. This method initializes the instance variables below, creates an output directory at the same level as the video path, and moves to that directory. All output files will be saved within this directory.
@@ -358,15 +607,29 @@ The class initialization method takes the attributes of the video path, scan dir
 1. **data**: Maneuver data of the playback section with the slit as the minimum unit. Defaults to an empty list.
 1. **width**: Width of the video. Reflects the video information read from `videopath`.
 1. **height**: Height of the video.
-7. **count**: Total number of video frames.
-8. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#class-variables).
-10. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
-11. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
-12. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
-15. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
+1. **count**: Total number of video frames.
+1. **recfps**: Frame rate (fps) of the video. The output frame rate is set in the [Class Variables](#class-variables).
+1. **inputmovfps**: Original FPS of the input video file (set from `cv2.CAP_PROP_FPS`).
+1. **scan_direction**: Defines the slit orientation and scan direction. The `sd` argument from the initialization method is applied directly.
+1. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
+1. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
+1. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
 1. **out_videopath**: Holds the path of the output video. Initially empty. Called in [animationout](#animationout).
-18. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
-13. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
+1. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
+1. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
+1. **cycle_axis**: Array storing rotation center axis positions. Referenced by `applyTimebySpace` (mode=1).
+1. **another_videos**: List of additional video paths for multi-FPS rendering. Set via `another_fps_dir` in init.
+1. **input_pix_fmt**: Pixel format of the input video (e.g., `yuv420p10le`). Detected automatically.
+1. **input_bit_depth**: Bit depth of the input video (default: `8`).
+1. **input_primaries**: Color primaries of the input video (e.g., `bt2020`, `bt709`). Detected automatically via ffprobe.
+1. **input_transfer**: Transfer characteristics of the input video (e.g., `smpte2084` for PQ, `arib-std-b67` for HLG). Detected automatically.
+1. **input_colorspace**: Color space / matrix of the input video (e.g., `bt2020nc`). Detected automatically.
+1. **is_morethan_8bit**: Boolean flag indicating HDR/high-bit-depth input. When True, rendering takes approximately 2.6x longer.
+1. **force_hdr_mode**: Force specific HDR output mode. `None` = follow input, `"hlg"` = force HLG, `"pq"` = force PQ.
+1. **log**: Accumulated maneuver operation log string. Built up by each method call for output filename generation.
+1. **infolog**: Accumulated info log string. Used by `info_setting`.
+1. **depth_to_sel_recfps**: Array mapping depth to selected recording FPS. Used in multi-FPS rendering.
+1. **renderfps_scales**: Array of FPS scale ratios (`some_recfps_array / recfps`). Used in multi-FPS rendering.
 
 #### Example
 ```python
@@ -382,64 +645,131 @@ print(your_maneuver.data.shape)
 
 
 ### List of All Class Methods:
-- [`__init__`](#__init__): Initializes by receiving the video path.
-- [`append`](#append): Appends the maneuver data created separately to the end of `data` held as an instance variable.
-- [`prepend`](#prepend): Adds a maneuver to the beginning of `data` held as an instance variable, which was created separately.
-- [`arrayExtract`]: The `start` and `end` points set in the arguments, extract an array of that range from `data` and rewrite `data`.
+- [`__init__`](#__init__): Initializes by receiving the video path. Params: `videopath`(str), `sd`(bool: slit direction), `outdir`(str), `datapath`(str: npy path), `foldername_attr`(str), `another_fps_dir`(str).
+- [`append`](#append): Appends the maneuver data created separately to the end of `data`. Params: `maneuver`(ndarray), `auto_zslide`(bool: auto time-adjust, default True), `zslide`(int: manual offset).
+- [`prepend`](#prepend): Adds a maneuver to the beginning of `data`. Params: `maneuver`(ndarray).
+- [`arrayExtract`](#arrayextract): Extracts a range from `data` and rewrites it. Params: `start`(int), `end`(int).
+- [`arrayReflection`](#arrayreflection): Mirror-reflects `data` by appending it in reverse order (time-reversed copy). No params.
+- [`wide_expandB`](#wide_expandb): Expands the spatial dimension by extrapolating edge slit data outward. Params: `add_size`(int, default 3840), `sclip`(bool), `zclip`(bool), `spacedirection`(bool), `z_offset`(int: time offset per added slit).
+- [`interpolation_append`](#interpolation_append): Smoothly connects the current `data` to another maneuver array. Params: `maneuver`(ndarray), `connection_num`(int: transition frames), `speed_round`(bool), `add_maneuver`(bool).
+- [`interpolation_append_byspeed`](#interpolation_append_byspeed): Connects to another maneuver at a specified speed with auto blur. Params: `maneuver`(ndarray), `frame_speed`(float), `speed_round`(bool), `add_maneuver`(bool), `sblur`(bool), `tblur`(bool), `blur_range`(int).
 - **Classes related to maneuver design**
     - **Functions that add space-time integrated motion**
-        - [`addFlat`](#addflat): Adds a flat array.
-        - [`addFreeze`](#addfreeze): Creates and adds an array of the final row for both the time and space axes for the number of frames specified by "frame_nums".
-        - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis at the specified spatial position for the specified number of frames.
+        - [`addFlat`](#addflat): Adds a flat array. Params: `frame_nums`(int), `z_pos`(int), `z_autofit`(bool), `prepend`(bool), `flip`(bool).
+        - [`addFreeze`](#addfreeze): Creates and adds an array of the final row for the number of frames specified. Params: `frame_nums`(int).
+        - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis. Params: `frame_nums`(int), `xypoint`(float: spatial position 0-1), `full_range`(bool), `z_start`(float), `z_end`(float).
+        - **3D Geometric Surface Cuts** — Cut XYT space with 3D geometric surfaces to produce a single frame.
+            - [`addSphereCut`](#addsphereCut): Hemisphere cut — dome-shaped time surface. Params: `center_time`(float: time center in frames), `radius`(float: max time deviation in frames), `center_pos`(float: spatial center 0-1, default 0.5), `hemisphere`(int: +1=future, -1=past).
+            - [`addConeCut`](#addconecut): Cone cut — linear falloff from center. Params: `center_time`(float), `height`(float: time deviation at apex), `center_pos`(float, default 0.5), `direction`(int: +1/-1), `exponent`(float: 1.0=cone, 2.0=paraboloid, 0.5=rounded).
+            - [`addCylinderCut`](#addcylindercut): Cylinder surface cut — sinusoidal time surface. Params: `center_time`(float), `radius`(float: amplitude), `cycles`(float: wave count, default 1.0), `phase`(float: radians, default 0.0).
+            - [`addMoebiusCut`](#addmoebiuscut): Möbius strip cut — both space and time twist with a half-turn. Params: `center_time`(float), `time_range`(float: time variation), `space_range`(float: spatial distortion 0-1, default 0.3), `twist`(int: number of half-twists, default 1).
+            - [`addTorusCut`](#addtoruscut): Torus (donut) cut — double undulation from major/minor radii. Params: `center_time`(float), `major_radius`(float), `minor_radius`(float), `center_pos`(float, default 0.5), `phase`(float: tube rotation, default 0.0).
+            - [`addHelixCut`](#addhelixcut): Helix/spiral cut — sinusoidal oscillation with linear drift. Params: `center_time`(float: start time), `radius`(float: oscillation amplitude), `pitch`(float: time drift per cycle), `cycles`(float, default 1.0).
+            - [`addSaddleCut`](#addsaddlecut): Saddle/paraboloid cut — parabolic time variation from center. Params: `center_time`(float), `curvature`(float: +outward=future, -outward=past), `center_pos`(float, default 0.5).
         - **Transposition of space and time dimensions**
-            - [`addTrans`](#addtrans): Simple transposition of space and time dimensions. For vertical slits, X-axis and T-axis are transposed. For horizontal slits, Y-axis and T-axis are transposed.
-            - [`addKeepSpeedTrans`](#addkeepspeedtrans): Creates and adds a new frame while maintaining the speed of existing frame data. Repeated until a specific spatial area is reached.
-            - [`insertKeepSpeedTrans`](#insertkeepspeedtrans): Advanced version of `addKeepSpeedTrans`. Smoothly interpolates between the arrays received by `after_array` for `self.data`.
-            - [`addWideKeyframeTrans`](#addwidekeyframetrans): Advanced version of `addKeyframeTrans`. Used when outputting at a size larger than the input image, like `midtide`.
-            - [`addBlowupTrans`](#addblowuptrans): A method to control blowup motion in more detail with keyframes. This method attempts to gradually change the resolution of the time axis, and basically has a movement similar to XYT Trans. The key parameters for detailed control of the time axis keyframes are `timevalues` and `timepoints`.
+            - [`addTrans`](#addtrans): Simple transposition of space and time dimensions. Params: `frame_nums`(int), `start_line`(float), `end_line`(float), `speed_round`(bool), `zd`(bool), `zscale`(float).
+            - [`addKeepSpeedTrans`](#addkeepspeedtrans): Creates frames maintaining existing speed until a spatial area is reached. Params: `frame_nums`(int), `under_xyp`(float), `over_xyp`(float), `rendertype`(int).
+            - [`addInsertKeepSpeedTrans`](#addinsertkeepspeedtrans): Advanced version of `addKeepSpeedTrans`. Params: `frame_nums`(int), `under_xyp`(float), `over_xyp`(float), `after_array`(list), `rendertype`(int).
+            - [`addWideKeyframeTrans`](#addwidekeyframetrans): Wide-output version for outputs larger than input. Params: `frame_nums`(int), `key_array`(list), `wide_scale`(int, default 3), `start_frame`(list), `speed_round`(bool).
+            - [`addBlowupTrans`](#addblowuptrans): Blowup motion with keyframe control. Params: `frame_nums`(int), `deg`(int, default 360), `speed_round`(bool), `connect_round`(list), `timevalues`(list), `timepoints`(list: 0-1 ratios), `timecenter`(list), `extra_degree`(int), `wave_type`(int), `zslide`(int).
        - **Transition of space-time dimensions**
-            - [`addInterpolation`](#addinterpolation): Interpolates based on the given parameters and adds the results to the data.
-            - [`rootingA_interporation`](#rootinga_interporation): Combines multiple addInterpolations. Zigzag motion.
-            - [`rootingB_interporation`](#rootingb_interporation): Combines multiple addInterpolations. Motion like dominos rolling down a slope.
-            - [`addCycleTrans`](#addcycletrans): Transitionally substitutes XYT. Rotates the playback cross-section around the centerline of the screen.
-            - [`addCustomCycleTrans`](#addcustomcycletrans): Able to move the center axis of rotation in addCycleTrans.
+            - [`addInterpolation`](#addinterpolation): Interpolates and adds to the data. Params: `frame_nums`(int), `i_direction`(bool), `z_direction`(bool), `axis_position`(bool), `s_reversal`(bool), `z_reversal`(bool), `cycle_degree`(int, default 90), `extra_degree`(int), `zslide`(int), `speed_round`(bool), `rrange`(list), `zscale`(float).
+            - [`rootingA_interporation`](#rootinga_interporation): Combines multiple addInterpolations in zigzag motion. Params: `FRAME_NUMS`(int), `loop_num`(int, default 2), `axis_first_p`(int), `speed_round`(bool), `interval_nums`(int: freeze frames between segments), `loopinterval_nums`(int).
+            - [`rootingA_interporation_single`](#rootinga_interporation_single): Single-segment rootingA. Params: `FRAME_NUMS`(int), `seg_type`(int: 0=fwd→rev, 1=rev→fwd), `speed_round`(bool), `interval_nums`(int), `panorama_nums`(int), `flip_axis`(bool), `junction_mode`(int: 0=normal, 1=smooth), `blur_rate`(int, default 90).
+            - [`rootingA_interporation_trans_single`](#rootinga_interporation_trans_single): Single-segment combining interpolation with transposition. Params: `FRAME_NUMS`(int), `seg_type`(int), `speed_round`(bool), `interval_nums`(int), `trans_nums`(int), `trans_end_line`(float), `flip_axis`(bool), `junction_mode`(int), `blur_rate`(int), `time_flip`(bool).
+            - [`rootingA_interporation_RANDOM`](#rootinga_interporation_random): Randomized rootingA with random axis and direction selection. Params: `FRAME_NUMS`(int), `loop_num`(int), `seed`(int), and various range params.
+            - [`rootingAA_interporation`](#rootingaa_interporation): Variant of rootingA keeping same spatial start and end positions. Params: `FRAME_NUMS`(int), `loop_num`(int), `axis_first_p`(int), `speed_round`(bool).
+            - [`rootingB_interporation`](#rootingb_interporation): Domino-rolling-down-a-slope motion. Params: `FRAME_NUMS`(int), `loop_num`(int), `axis_fix_p`(int).
+            - [`rooting8_interporation`](#rooting8_interporation): 8-pattern (figure-eight) interpolation. Params: `FRAME_NUMS`(int).
+            - [`rooting8B_interporation`](#rooting8b_interporation): Variant of rooting8. Params: `FRAME_NUMS`(int).
+            - [`rooting4C_interporation`](#rooting4c_interporation): 4C-pattern interpolation. Params: `FRAME_NUMS`(int).
+            - [`rooting4D_interporation`](#rooting4d_interporation): 4D-pattern interpolation. Params: `FRAME_NUMS`(int).
+            - [`addCycleTrans`](#addcycletrans): Rotates the playback cross-section around the screen centerline. Params: `frame_nums`(int), `cycle_degree`(int, default 360), `t_auto_scaling`(bool), `zslide`(int), `extra_degree`(int), `speed_round`(bool), `spaceflow`(bool), `zscale`(float).
+            - [`addCustomCycleTrans`](#addcustomcycletrans): Movable center axis version of addCycleTrans. Params: `frame_nums`(int), `cycle_degree`(int), `start_center`(float, default 0.5), `end_center`(float, default 0.5), `t_auto_scaling`(bool), `extra_degree`(int), `speed_round`(bool), `zslide`(int), `auto_zslide`(bool), `t_auto_scaling_num`(float), `zscale`(float), `spaceflow`(bool).
+            - [`addWideCustomCycleTrans`](#addwidecustomcycletrans): Wide-output version of addCustomCycleTrans. Params: `frame_nums`(int), `cycle_degree`(int), `start_center`(float), `end_center`(float), `maxz_range`(int), `wide_scale`(int, default 3), `t_auto_scaling`(bool), `extra_degree`(int), `speed_round`(bool).
+            - [`addFixWideCycleTrans`](#addfixwidecycletrans): Fixed-width wide cycle trans with auto time-axis scaling. Params: `frame_nums`(int), `cycle_degree`(int), `wide_scale`(int, default 3), `t_auto_scaling`(bool), `extra_degree`(int), `speed_round`(bool).
         - **Wavy playback cross-section**
-            - [`addWaveTrans`](#addwavetrans): Creates a playback cross-section with a dynamic wave shape for the pixel matrix of time and space. It's also possible to toggle fixing the spatial axis.
-            - [`addEventHorizonTrans`](#addeventhorizontrans): No change in spatial area. The progression speed of time changes between the center and periphery of the screen. Cancels the optical flow of video captured by a camera that moves forward and backward.
+            - [`addWaveTrans`](#addwavetrans): Dynamic wave-shaped playback cross-section. Params: `frame_nums`(int), `cycle_degree`(float: wavelength), `zdepth`(float: wave amplitude), `flow`(bool: move spatial axis), `zslide`(float), `speed_round`(bool).
+            - [`addEventHorizonTrans`](#addeventhorizontrans): Time progression varies between center and periphery. Params: `frame_nums`(int), `zdepth`(float), `z_osc`(int), `cycle_degree`(int, default 180), `flow`(bool), `zslide`(int).
     - **Time-focused maneuver**
-        - [`applyTimeForward`](#applytimeforward): Apply forward time flow (in slide_time units) to the entire array.
-        - [`applyTimeOblique`](#applytimeoblique): Apply oblique time effect.
-        - [`applyTimeForwardAutoSlow`](#applytimeforwardautoslow): Primarily used when the current state is slow-motion. Adds normal playback frames during intro and outro, smoothly connecting them with ease processing.
-        - [`applyTimeFlowKeepingExtend`](#applytimeflowkeepingextend): Prepends or appends extended frames to the given maneuver array. Extends XY frames with the same data as the final and initial frames. Maintains the final change rate for Z (out time). Use the `fade` argument to ease to speed 0 when True.
-        - [`applyTimeLoop`](#applytimeloop): Time loop for the entire maneuver array, including front, forward, back, reverse, and then forward again, creating a seamless loop with no time gap between the beginning and end. Currently only supports a default frequency of 2Hz.
-        - [`applyTimeClip`](#applytimeclip): Fix the time flow of specified slits to a specific time.
-        - [`applyTimebySpace`](#aapplyTimebySpace): shift the slit in the time direction by up to the number of frames specified by `v`, depending on the spatial position of the slit. mean_mode=1 refers to self.cycle_axis. mean_mode=2, Compute for the mean of the slit space position.
-        - [`applyTimebyKeyframetoSpace`](#applyTimebyKeyframetoSpace): Shift the slit in the time direction by the number of frames specified by the keyframe according to the spatial position of the slit. mean_mode=2, it is calculated with respect to the average of the slit spatial position.
-        - [`applyTimeSlide`](#applytimeslide): Set the reference time of the central slit in the first frame to the specified time. Adjust the entire array accordingly.
-        - [`applyInOutGapFix`](#applyinoutgapfix): An auxiliary function for creating seamless loops. Calculates the difference between the first and last frames and adjusts frames as needed.
-        - [`applyTimebySpace`](#applytimebyspace):Depending on the spatial position of the slit, the number of frames specified by `v` is shifted in the time direction as the maximum value.
-        - [`applySpaceBlur`](#applyspaceblur): Apply spatial blur.
-        - [`applyTimeBlur`](#applytimeblur): Apply temporal blur.
-        - [`applyCustomeBlur`](#applycustomeblur): Apply custom range blur.
+        - [`applyTimeForward`](#applytimeforward): Apply forward time flow to the entire array. Params: `slide_time`(int: frames per output frame, default=recfps/outfps), `start_frame`(int, default 0), `end_frame`(int).
+        - [`applyTimeOblique`](#applytimeoblique): Apply oblique time effect — shifts each slit progressively. Params: `maxgap`(int: maximum time shift).
+        - [`applyTimeForwardAutoSlow`](#applytimeforwardautoslow): Adds normal playback intro/outro with ease processing. Params: `slide_time`(int), `defaultAddTime`(int, default 100), `addTimeEasing`(bool), `easeRatio`(float, default 0.3).
+        - [`applyTimeFlowKeepingExtend`](#applytimeflowkeepingextend): Prepends/appends extended frames maintaining time flow rate. Params: `frame_nums`(int), `fade`(bool: ease to speed 0), `intro`(bool), `outro`(bool), `fade_speed`(int), `fade_type`(str: "inout"), `space_apply`(bool).
+        - [`applyTimeFlowKeepingExtend_CoodinateBase_Intro`](#applytimeflowkeepingextend_coodinatebase_intro): Coordinate-based intro extension with zero accumulated error. Params: `target_z`(float: exact destination timecode for all slits), `num_frames`(int: number of extension frames). Per-slit step = `(data[0,slit,1] - target_z) / num_frames`.
+        - [`applyTimeFlowKeepingExtend_CoodinateBase_Outtro`](#applytimeflowkeepingextend_coodinatebase_outtro): Coordinate-based outro extension with zero accumulated error. Params: `target_z`(float: exact destination timecode), `num_frames`(int). Per-slit step = `(target_z - data[-1,slit,1]) / num_frames`.
+        - [`applyTimeLoop`](#applytimeloop): Time loop — forward, reverse, forward — creating a seamless loop. Params: `slide_time`(int), `freq`(int, default 2), `stay_time`(int, default 30), `intepolation_min`(int, default 300), `stay_time_min`(int, default 30).
+        - [`applyTimeLoopB`](#applytimeloopb): Per-slit variant of applyTimeLoop with individual stay time adjustment. Params: `slide_time`(int), `freq`(int), `stay_time`(int, default 90), `intepolation_min`(int), `stay_time_min`(int).
+        - [`applyTimeChoppyLoop`](#applytimechoppyloop): Triangle-wave time loop pattern. Params: `slide_time`(int), `frequency`(int), `phase_shift`(int), `rise`(float, default 0.5), `fall`(float, default 0.5).
+        - [`applyTimeChoppyLoopB`](#applytimechoppyloopb): Extended choppy loop with sine wave option. Params: `slide_time`(int), `frequency`(int), `phase_shift`(int), `rise`(float), `fall`(float), `wave_type`(str: 'triangle'|'sine'), `blur`(int).
+        - [`applyTimeClip`](#applytimeclip): Fix specified slits' time to a specific value. Params: `trackslit`(int: slit index), `cliptime`(float).
+        - [`applyTimebySpace`](#applytimebyspace): Shift slits in time based on spatial position. Params: `v`(int: max frame shift), `mode`(int: 0=linear, 1=cycle_axis, 2=mean).
+        - [`applyTimebyKeyframetoSpace`](#applytimebykeyframetospace): Shift slits in time by keyframe values. Params: `keyframes`(list: [(position, value),...]), `mode`(int).
+        - [`applyTimeSlide`](#applytimeslide): Set reference time of central slit in first frame. Params: `settime`(int: target time in frames), `baseframe`(int, default 0: -1 for last frame).
+        - [`applyInOutGapFix`](#applyinoutgapfix): Seamless loop helper — linearly adjusts all frames to match first/last difference. No params.
+        - [`applyInFix`](#applyinfix): Adjusts first frame to target, linear blend over all frames. Params: `target_z_array`(ndarray: target time values per slit).
+        - [`applyOutFix`](#applyoutfix): Adjusts last frame to target with ease-in-out blend. Params: `target_z_array`(ndarray), `ease`(bool, default True).
+        - [`applyInPartFix`](#applyinpartfix): Partial fix from frame 0 to `b_frame`. Params: `target_z`(float), `a_frame`(int: target frame), `b_frame`(int: blend end frame).
+        - [`applyOutPartFix`](#applyoutpartfix): Partial fix from `a_frame` to end. Params: `target_z`(float), `a_frame`(int: blend start), `b_frame`(int: target frame), `b_frame_s_point`(int).
+        - [`applyOutPartFixB`](#applyoutpartfixb): Array version — per-slit adjustment. Params: `target_z_array`(ndarray), `a_frame`(int), `b_frame`(int), `base_z_array`(ndarray).
+        - [`applySpaceBlur`](#applyspaceblur): Apply spatial blur. Params: `bl_time`(int: blur kernel size in frames).
+        - [`applyTimeBlur`](#applytimeblur): Apply temporal blur. Params: `bl_time`(int: blur kernel size in frames).
+        - [`applyCustomeBlur`](#applycustomeblur): Apply custom range blur with weighted mean. Params: `s_frame`(int: start), `e_frame`(int: end), `bl_time`(int: kernel size), `dim_num`(int: 1=time, 0=space).
+        - [`applyLoopBlur`](#applyloopblur): Blur for loop continuity — triples data, blurs, extracts center. Params: `sblur`(int: space blur), `tblur`(int: time blur).
+        - [`applyConnectLoopBlur`](#applyconnectloopblur): Loop blur at connection points only. Params: `sblur`(int), `tblur`(int), `connect_frame`(int, default 100: blur range at connection).
+        - [`applyPointBlur`](#applypointblur): Blur centered at a specific frame. Params: `point_frame`(int), `sblur`(int), `tblur`(int), `range_frame`(int, default 100).
+    - **Spatial operations**
+        - [`applySpaceFlip`](#applyspaceflip): Flips the spatial dimension of `data` (mirror reversal). No params.
+        - [`applySpaceFlat`](#applyspaceflat): Resets spatial component to initial sequential values (0 to scan_nums-1). No params.
     - **Other maneuver functions**
-        - [`addFreeze`](#addfreeze): Generate and add frames specified by "frame_nums" to both the time and spatial axes based on the final column's array.
-        - [`preExtend`](#preextend): Extend the first frame of the given maneuver array forward.
-        - [`addExtend`](#addextend): Extend the final frame of the given maneuver array. Z-rate becomes 0.
-        - [`zCenterArrange`](#zcenterarrange): Match the number of frames in the maneuver array with the input video's temporal center.
+        - [`addFreeze`](#addfreeze): Generate and add frames based on the final column's array. Params: `frame_nums`(int).
+        - [`preExtend`](#preextend): Extend the first frame forward. Params: `addframe`(int: number of frames to prepend).
+        - [`addExtend`](#addextend): Extend the final frame. Z-rate becomes 0. Params: `addframe`(int), `flip`(bool: mirror spatial axis).
+        - [`timeFlowKeepingExtend`](#timeflowkeepingextend): Returns an extended array (does not modify `self.data`). Params: `frame_nums`(int), `fade`(bool), `intro`(bool), `outro`(bool), `fade_speed`(int), `fade_type`(str), `space_apply`(bool).
+        - [`zCenterArange`](#zcenterarange): Shifts time dimension to center at `count/2`. NaN-safe. Params: `center_time_frame`(int, optional: custom center).
+        - [`zStartArange`](#zstartarange): Shifts time dimension so minimum starts at 0. No params.
+        - [`zPointCheck`](#zpointcheck): Checks time coordinates are within valid range. Params: `subtract_count`(int, default 0: margin).
+        - [`zPointCheckandReflect`](#zpointcheckandreflect): Checks and reflects out-of-range time values. Params: `subtract_count`(int, default 0).
+        - [`spline_interpolate`](#spline_interpolate): Spline or linear interpolation of keyframes. Params: `x`(ndarray: positions), `keyframes`(list: [(pos, val),...]), `method`(str: 'spline'|'linear').
 - **Methods for maneuver data output**
-    - [`dataCheck`](#datacheck): Output information about `data` to the console.
-    - [`info_setting`](#info_setting): Configure data based on the number of threads, calculate playback rates and pans.
-    - [`maneuver_CSV_out`](#maneuver_csv_out): Output maneuver array data to a CSV file for visualization in external software (e.g., Excel).
-    - [`scd_out`](#scd_out): Output SuperCollider sound processing code to load and save related data in CSV.
-    - [`data_save`](#data_save): Save maneuver data as a numpy file.
+    - [`dataCheck`](#datacheck): Output `data` shape and min/max to the console. No params.
+    - [`info_setting`](#info_setting): Configure data for audio/analysis output. Params: `thread_num`(int, default 20: number of slit divisions), `raw`(bool: output raw arrays).
+    - [`maneuver_CSV_out`](#maneuver_csv_out): Output maneuver data to CSV. Params: `thread_num`(int), `time_map`(bool), `space_map`(bool), `time_rate_map`(bool), `now_depth_map`(bool), `space_rate_map`(bool), `movement_rate_map`(bool).
+    - [`scd_out`](#scd_out): Output SuperCollider code and CSV data. Params: `thread_num`(int), `audio_path`(str).
+    - [`data_save`](#data_save): Save maneuver data as npy. Params: `attr`(str: filename suffix), `sep`(int: split count, 0=no split).
+    - [`split_3_npySave`](#split_3_npysave): Split data into 3 parts (L/C/R) and save as npy. No params.
+    - [`split_3_npysavereturn`](#split_3_npysavereturn): Same as `split_3_npySave` but returns file paths as array. No params.
+    - [`vsizeReturn`](#vsizereturn): Returns output image dimensions (width, height). No params.
 - **Methods for maneuver visualization file output**
-    - [`maneuver_2dplot`](#maneuver_2dplot): Create a 2D plot and save related data as an image.
-    - [`maneuver_3dplot`](#maneuver_3dplot): Generate a 3D plot and save images or videos.
+    - [`maneuver_2dplot`](#maneuver_2dplot): 2D plot with optional seekbar video. Params: `thread_num`(int), `thread_through`(bool), `debugmode`(bool), `normal_line_draw`(bool), `w_inc`(float), `h_inc`(float), `video_out`(bool), `video_alpha`(bool).
+    - [`maneuver_3dplot`](#maneuver_3dplot): 3D plot animation. Params: `thread_num`(int), `thread_through`(bool), `zRangeFix`(bool), `out_framenums`(int), `out_fps`(int), `colormode`(str), `line_width`(float), `aspect_ratio`(tuple), `elev`(float), `azim`(float), `dpi`(int), `xticks`(bool), `zticks`(bool), `yticks_normal`(bool), `only_seq_img`(bool), `lineplot`(bool), `vectorplot`(bool), `gridplot`(bool), `vector_def_frame`(int), `velocity`(float), `vector_color_amp`(float), `s_frame`(int), `zRangeMin`(float), `zRangeMax`(float).
+    - [`maneuver_3dplot_midtide`](#maneuver_3dplot_midtide): 3D plot optimized for mid-tide wide output. Params: `thread_num`(int), `thread_through`(bool), `zRangeFix`(bool), `out_framenums`(int), `out_fps`(int), `colormode`(str), `aspect_ratio`(tuple), `elev`(float), `azim`(float), `dpi`(int).
+    - [`maneuver_imgplot`](#maneuver_imgplot): Static image plots (space/time/rate). Params: `plot_mode`(str: "space"|"time"|"rate"|"all"), `colormode`(str), `nticks_x`(int), `nticks_y`(int), `save_png`(bool), `time_axis`(str: 'auto'|'frame'|'sec').
+    - [`img_to_maneuver`](#img_to_maneuver): Reconstruct `data` from space and time images (16-bit PNG). Params: `space_img_path`(str), `time_img_path`(str), `space_set`(float), `vrange`(float).
+    - [`img_to_maneuver_rate_based`](#img_to_maneuver_rate_based): Reconstruct `data` from rate image by integrating. Params: `time_rate_path`(str), `space_img_path`(str), `space_set`(float), `start_time`(float), `rate_range`(float), `rate_baseline`(float), `rate_startpoint`(float).
 - **Methods for video rendering**
-    - [`transprocess`](#transprocess): Transprocess the video. This method handles video rendering, separate rendering, and other options.
-    - [`transprocess_typeB`](#transprocess_typeb): Method for video rendering. Divides the input time dimension instead of the output time dimension for separate processing. Use this method when there are maneuvers that widen the time axis direction significantly for faster rendering.
-    - [`pretransprocess`](#pretransprocess): Video rendering at high speed by thinning out the number of frames. It is for preview purposes only.
-    - [`animationout`](#animationout): Reference the rendered video data, plot pixel colors from images onto a 3D graph, and output the result as an animation. Can only be executed after video rendering.
+    - [`new_transprocess`](#new_transprocess): Primary HDR rendering method. Params: `separate_num`(int), `sep_start_num`(int), `sep_end_num`(int), `out_type`(int: 0-6), `xy_trans_out`(bool), `render_mode`(int: 0-3), `title_atr`(str), `del_data`(bool), `render_clip_start`(int), `render_clip_end`(int), `slit_step`(int: downscale slit), `scan_step`(int: downscale scan), `use_pyav`(bool).
+    - [`transprocess`](#transprocess): Legacy OpenCV rendering. Params: `separate_num`(int), `sep_start_num`(int), `sep_end_num`(int), `out_type`(int), `XY_TransOut`(bool), `render_mode`(int), `seqrender`(bool), `title_atr`(str).
+    - [`pretransprocess`](#pretransprocess): Fast preview rendering with thinned frames. Params: `outnums`(int, default 100: output frame count), `xy_trans_out`(bool).
+- **Analysis**
+    - [`movement_intensity_analyze`](#movement_intensity_analyze): Analyzes motion intensity frame by frame and plots. No params.
+- **Post-rendering methods**
+    - [`overlay_tc_rate`](#overlay_tc_rate): Overlays timecode and playback rate on rendered video. Params: `output_suffix`(str, default "_tc"), `divisions`(int, default 5: number of probe points across frame width). Rate color: yellow(+1), blue(-1), gray(0). Timecode displayed as `{sec}sec---{frac}f`.
+    - [`animationout`](#animationout): Plot pixel colors from rendered video onto 3D graph as animation. Params: `out_framenums`(int, default 100), `drawLineNum`(int, default 250), `dpi`(int, default 200), `out_fps`(int, default 10).
+    - [`animationout_custome`](#animationout_custome): Customizable animationout. Params: `zRangeFix`(bool), `out_framenums`(int), `drawLineNum`(int), `dpi`(int), `out_fps`(int), `aspect_ratio`(tuple), `elev`(float), `azim`(float), `colormode`(str), `transparent`(bool), `gridplot`(bool), `vectorplot`(bool), `vector_def_frame`(int), `velocity`(float), `vector_color_amp`(float), `s_frame`(int).
+
+### Standalone Functions (Module-level)
+
+These are not class methods but standalone functions available at the module level.
+
+- [`export_segments`](#export_segments): Exports A/B segments from a source video with frame number overlay and real-time speed correction. A segments are forward playback; B segments are hflip + reverse.
+- [`rendered_npys_to_mov`](#rendered_npys_to_mov): Combines split-rendered npy files into a single video file. Supports all `out_type` formats (H.264, H.265, ProRes 422, ProRes 4444, etc.).
+- [`rearrange_wide_video`](#rearrange_wide_video): Rearranges a wide panoramic video by interleaving left-half and right-half columns. Can read from npy files or an existing video file.
+- [`rendered_mov_to_seq`](#rendered_mov_to_seq): Extracts frames from a rendered video and saves as an image sequence (jpg, png, etc.). Supports `divide_num` for splitting into subfolders and `frame_array` for selective extraction.
+- [`convert_npy_to_jpg`](#convert_npy_to_jpg): Converts a single npy file (saved frame array) to JPEG images.
+- [`custom_blur`](#custom_blur): Applies weighted-mean blur to a data array over a specified frame range and dimension. Used internally by `applyCustomeBlur`.
+- [`custom_onedimention_blur`](#custom_onedimention_blur): 1D weighted-mean blur for a single time array over a specified frame range.
+- [`double_first_dimension_with_interpolation`](#double_first_dimension_with_interpolation): Doubles the first dimension of a 3D array by inserting interpolated frames between existing ones.
 
 
 ## `addTrans`
@@ -539,6 +869,12 @@ your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=False)
 your_object.addInterpolation(100, 0, 1, 1,s_reversal=True,z_reversal=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
+
+```python
+your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=True)
+```
+![Alt text](images/sample_Vslit_IP180(ID0-ZD0-AP0-SREV0-ZREV1)_3dPlot.gif)
+
 
 ## `addCycleTrans`
 
@@ -647,6 +983,67 @@ your_maneuver.applyTimeForward(1)
 # Rendering
 your_maneuver.transprocess()
 ```
+## `new_transprocess`
+Primary video rendering method with HDR support, FFmpeg/PyAV pipeline, and rendering downscale options. Replaces `transprocess` for most use cases.
+
+### Parameters
+- `separate_num` (int, optional, default: `None`): Number of divisions for split rendering. Auto-calculated from available memory if None.
+- `sep_start_num` (int, optional, default: `0`): Start division index for split rendering.
+- `sep_end_num` (int or None, optional, default: `None`): End division index.
+- `out_type` (int, optional, default: `1`): Output format. Use class constants listed in the table below.
+- `xy_trans_out` (bool, optional, default: `False`): If True, rotates output by 90 degrees.
+- `render_mode` (int, optional, default: `0`): `0` = full render, `1` = range only, `2` = npy raw data only (no video), `3` = video from existing tmp only.
+- `title_atr` (str, optional, default: `None`): Append a string to the output filename.
+- `del_data` (bool, optional, default: `True`): Delete `self.data` before rendering to free memory. If True, `animationout` cannot be called afterward.
+- `render_clip_start` (int, optional, default: `0`): Start frame for partial rendering.
+- `render_clip_end` (int or None, optional, default: `None`): End frame for partial rendering.
+- `slit_step` (int, optional, default: `1`): Downscale slit length dimension by skipping pixels. `2` = 1/2, `3` = 1/3, `4` = 1/4. Values ≤ 0 are treated as 1.
+- `scan_step` (int, optional, default: `1`): Downscale scan_nums dimension by subsampling scan lines. Non-destructive — `self.data` is not modified. Values ≤ 0 are treated as 1.
+
+### Usage
+```python
+# Standard rendering
+bm.new_transprocess()
+
+# HDR H.265 output
+bm.new_transprocess(out_type=bm.OUT_H265)
+
+# ProRes 422 HQ output
+bm.new_transprocess(out_type=bm.OUT_PRORES_422)
+
+# Downscaled preview (1/4 area)
+bm.new_transprocess(slit_step=2, scan_step=2)
+
+# Partial rendering (frames 100 to 500)
+bm.new_transprocess(render_clip_start=100, render_clip_end=500)
+```
+
+### `out_type` Reference Table
+
+| Value | Constant | Codec | Pixel Format | Color Space | Container | Notes |
+|-------|----------|-------|-------------|-------------|-----------|-------|
+| `0` | `OUT_STILL` | — | — | — | Sequential images | Still image output (jpg/bmp) |
+| `1` | `OUT_H264` | libx264 | yuv420p (8bit) | SDR BT.709 | .mp4 | Default. Max 4096×2160 |
+| `2` | `OUT_H265` | libx265 | yuv420p10le (10bit) | HDR10 PQ BT.2020 | .mp4 | Max 8192×4320 |
+| `3` | `OUT_PRORES_422` | prores_ks | yuv422p10le (10bit) | HDR BT.2020 | .mov | ProRes 422 HQ. No resolution limit |
+| `4` | `OUT_PRORES_4444` | prores_ks | yuv444p10le (10bit) | HDR BT.2020 | .mov | ProRes 4444. No resolution limit |
+| `5` | `OUT_H265_SDR` | libx265 | yuv422p10le (10bit) | SDR BT.709 | .mp4 | H.265 with SDR color tags |
+| `6` | `OUT_PRORES_422_SDR` | prores_ks | yuv422p10le (10bit) | SDR BT.709 | .mov | ProRes 422 HQ with SDR color tags |
+
+> **Resolution limits**: H.264 is limited to 4096×2160, H.265 to 8192×4320. For resolutions exceeding these limits (e.g. wide panoramic renders), use ProRes (`OUT_PRORES_422` or `OUT_PRORES_422_SDR`).
+
+> **`rendered_npys_to_mov`**: The standalone function for combining split-rendered npy files also supports all `out_type` values above. Pass `out_type=None` (default) for legacy cv2 mp4v output.
+> ```python
+> import imgtrans2026_backup as imgtrans
+> imgtrans.rendered_npys_to_mov(
+>     out_dir='path/to/output',          # Output path (without extension)
+>     npys_path='path/to/tmp',           # Folder containing sep-*.npy files
+>     out_fps=60,
+>     sep_start=1, sep_end=6,
+>     out_type=imgtrans.drawManeuver.OUT_PRORES_422_SDR
+> )
+> ```
+
 ## `animationout`
 
 The `animationout` function plots the pixel color of the image on a 3D graph with reference to the output video data and outputs the result as an animation. It allows you to visualize the trajectory of the playback cross section based on spatio-temporal manipulations on the spatio-temporal cube. Unlike 'maveuver_2dplot' and 'maveuver_3dplot', this visualization is more intuitive in its correspondence with the input video data by mapping pixel colors.  
@@ -665,6 +1062,119 @@ The `animationout` function plots the pixel color of the image on a 3D graph wit
 
 ### Examples of Use 
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)
+
+## Recent Updates (2026)
+
+### Rendering Downscale Options (`new_transprocess`)
+Two new parameters allow rendering at reduced resolution for faster preview or smaller file output, without modifying maneuver data:
+- `slit_step` (int, default: `1`): Downscale the slit length dimension by skipping pixels. `2` = 1/2, `3` = 1/3, `4` = 1/4 size. Values of 0 or less are treated as 1.
+- `scan_step` (int, default: `1`): Downscale the scan_nums dimension by subsampling scan lines. `2` = 1/2, `3` = 1/3, `4` = 1/4. Non-destructive — `self.data` is not modified.
+
+```python
+bm.new_transprocess()                          # Full resolution
+bm.new_transprocess(slit_step=2)               # Half slit length (e.g., 2160→1080)
+bm.new_transprocess(scan_step=2)               # Half scan nums
+bm.new_transprocess(slit_step=2, scan_step=2)  # Both halved (1/4 area)
+```
+
+### Seekbar Video Output (`maneuver_2dplot`)
+`maneuver_2dplot` can now export an animated video with a moving seekbar overlay:
+- `video_out` (bool, default: `False`): When True, outputs a video with a dotted seekbar line and timecode display.
+- `video_alpha` (bool, default: `False`): When True, outputs ProRes 4444 MOV with alpha channel instead of MP4.
+
+```python
+bm.maneuver_2dplot(video_out=True)                # MP4 with white background
+bm.maneuver_2dplot(video_out=True, video_alpha=True)  # ProRes 4444 with transparency
+```
+
+### Spatial Expansion with Time Offset (`wide_expandB`)
+- `z_offset` (int, default: `0`): Adds a per-step time offset during spatial expansion. Right side gets `+z_offset` per step (future), left side gets `-z_offset` (past). Useful for creating natural-looking train window scenery where the expanded area has a time gradient even when the actual time difference is zero.
+
+```python
+bm.wide_expandB(add_size=3840, z_offset=1)
+```
+
+### Junction Mode and Blur Rate (`rootingA_interporation_single`, `rootingA_interporation_trans_single`)
+- `junction_mode` (int, default: `0`): Selects where the time direction reversal point (junction) is placed.
+  - `0`: Default — end of panorama/interval + shift
+  - `1`: End of first-half interpolation
+  - `2`: Midpoint of panorama/trans section
+- `blur_rate` (int, default: `90`): Controls the blur range around the junction as a percentage of the segment frame count. The blur is applied per-segment rather than cumulatively across segments.
+
+```python
+bm.rootingA_interporation_single(Fnum, seg_type=0, junction_mode=2, blur_rate=90)
+bm.rootingA_interporation_trans_single(Fnum, seg_type=0, junction_mode=2, blur_rate=90, time_flip=False)
+```
+
+### Head/Tail Timecode Alignment (`applyInOutGapFix`)
+Auxiliary function for seamless loop creation. Calculates the difference between first and last frames' time values and linearly adjusts all frames to match.
+
+### Bug Fix: `applyCustomeBlur` Negative Index
+Fixed a bug where `applyCustomeBlur` with `s_frame=0` could produce NaN values in the first ~60 frames due to negative numpy array indexing. The mean slice lower bound is now clamped to 0.
+
+### HDR Color Profile Support (Image Output)
+
+When rendering to image files (`out_type=0`), the color profile of the input video is now automatically embedded in the output.
+This is critical for HDR content (PQ / HLG) — without the correct profile, viewers such as macOS Preview will interpret PQ-encoded pixel values as sRGB and display incorrect colors.
+
+**Supported formats and methods:**
+
+| Format | HDR Profile | Method |
+|--------|------------|--------|
+| PNG | Full (BT.2100 PQ / HLG) | cICP chunk injection after save |
+| TIFF | Primaries only (BT.2020) | `sips --embedProfile` with system ICC |
+| Others | None | Standard `cv2.imwrite` |
+
+- For PQ (SMPTE ST 2084) sources, PNG output is recommended as it embeds the complete BT.2100 PQ profile via the cICP chunk, which macOS Preview recognizes as "Rec. ITU-R BT.2100 PQ".
+- For TIFF, the BT.2020 ICC profile (`ITU-2020.icc`) is embedded via macOS `sips`. This provides correct color primaries but uses a gamma-based TRC rather than PQ.
+- The input video's `color_primaries`, `color_transfer`, and `colorspace` are detected automatically via `ffprobe` during initialization.
+
+**Configuration:**
+```python
+bm.imgtype = ".png"   # Recommended for HDR (default)
+bm.imgtype = ".tif"   # TIFF output (BT.2020 primaries only for HDR)
+```
+
+The profile is applied automatically by the internal `_save_image_with_profile()` method — no additional user action is needed. The cICP chunk uses ITU-T H.273 code points mapped from ffprobe values (e.g., `bt2020` → 9, `smpte2084` → 16, `arib-std-b67` → 18).
+
+### Timecode & Rate Overlay (`overlay_tc_rate`)
+
+Overlays timecode and playback rate information onto a rendered video for debugging alignment.
+
+- `divisions` (int, default: `5`): Number of evenly spaced probe points across the frame width. Each probe point displays its slit's timecode and instantaneous playback rate.
+- Timecode is displayed in `{sec}sec---{frac}f` format based on `recfps` (e.g., `380sec---12f` for frame 182412 at 480fps).
+- Rate text color indicates playback direction: yellow for forward (+1), blue for reverse (-1), gray for near-zero.
+- Text is horizontally centered on each probe slit's pixel position.
+
+```python
+bm.new_transprocess(del_data=False)
+bm.overlay_tc_rate(divisions=5)
+```
+
+### Segment Export (`export_segments`)
+
+Standalone function (not a class method) that exports A/B segments from a source video with frame number overlay. Replaces the shell-based `separate.bash` workflow.
+
+- Reads the source video, applies real-time speed correction (`recfps / out_fps` frame stepping), and exports:
+  - **A segments**: Forward playback at real-time speed
+  - **B segments**: Horizontal flip + reverse playback at real-time speed
+- Frame numbers are drawn centered on each frame in `{sec}s{frac}f` format (based on `recfps`).
+- Output format: ProRes 422 `.mov`
+
+```python
+import imgtrans
+
+imgtrans.export_segments(
+    video_path='/path/to/source.mov',
+    out_dir='/path/to/output',
+    segment_sec=10,       # Real-time seconds per segment
+    segment_count=44,     # Number of segments
+    out_fps=60,           # Output frame rate
+    recfps=480,           # Original recording frame rate
+    with_frame_num=True,  # Draw frame numbers
+    export_only="both"    # "both", "A", or "B"
+)
+```
 
 ## Contribute
 Contributions to this project are welcome.  
