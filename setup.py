@@ -8,10 +8,13 @@ setup(
         'opencv-python',
         'numpy',
         'psutil',
-        'easing',
+        'easing-functions',
         'matplotlib',
         'librosa',
+        'av',      # PyAV: HDR/10bit+ decode & YUV-native encode path
+        'numba',   # JIT acceleration for YUV-native slit-scan (optional but recommended)
     ],
+    # NOTE: FFmpeg (ffmpeg & ffprobe) must also be installed on the system PATH.
     # その他のメタデータ（必要に応じて）
     author='Ryu Furusawa',
     author_email='ryufurusawa@gmail.com',

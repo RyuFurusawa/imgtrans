@@ -1,7 +1,7 @@
-"""imgtrans2026 - 後方互換シム
+"""imgtrans - 後方互換シム
 
 このファイル自体には実装はなく、`imgtrans_lib` パッケージから全公開 API を
-再エクスポートしている。`import imgtrans2026 as imgtrans` のような既存の
+再エクスポートしている。`import imgtrans as imgtrans` のような既存の
 呼び出しコードはそのまま動作する。
 
 実装の本体は以下のモジュールを参照:

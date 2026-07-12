@@ -64,8 +64,13 @@ This tool began its development in 2020 for the production of works by the video
 ## Installation
 Before installing this library, please install the following external libraries:
 ```bash
-pip install opencv-python numpy psutil easing-functions matplotlib librosa
+pip install opencv-python numpy psutil easing-functions matplotlib librosa av numba
 ```
+- `av` (PyAV): required for decoding HDR / 10bit+ input video and for the YUV-native encode path.
+- `numba`: optional but recommended — JIT-accelerates the YUV-native slit-scan kernels. If absent, a pure-NumPy fallback is used.
+
+In addition, the **FFmpeg** suite (both `ffmpeg` and `ffprobe`) must be installed and available on your `PATH`. It is used for input color-metadata detection (`ffprobe`) and for encoding the output video (`ffmpeg`). On macOS: `brew install ffmpeg`. The optional Ultra HDR still export additionally requires the `ultrahdr_app` binary (macOS: `brew install libultrahdr`).
+
 ### To install this library:
 ```bash
 pip install git+https://github.com/ryufurusawa/imgtrans.git
@@ -263,11 +268,28 @@ In the example below, rendering is performed from the 5th step of 10 steps.
 ```python
 your_maneuver.transprocess(10, sep_start_num=5, sep_end_num=10)
 ```
-By specifying with the out_type variable, you can also export as a series of still images.
+The `out_type` variable selects the output **codec / format**, not a still-vs-video toggle. `0` exports a series of still images; the other values choose a video encoder:
+
 ```python
-your_maneuver.transprocess(out_type=0) #0=still, 1=video, 2=both 
+your_maneuver.transprocess(out_type=0)   # still image sequence
+your_maneuver.transprocess(out_type=1)   # H.264 SDR 8bit .mp4 (default)
+your_maneuver.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov (recommended for HDR archival)
 ```
-For details, refer to [`transprocess`](#transprocess-method).
+
+| `out_type` | Constant | Output |
+|---|---|---|
+| `0` | `OUT_STILL` | Still image sequence (format set by `imgtype`) |
+| `1` | `OUT_H264` | H.264 SDR 8bit `.mp4` (**default**) |
+| `2` | `OUT_H265` | H.265/HEVC HDR10 10bit `.mp4` |
+| `3` | `OUT_PRORES_422` | ProRes 422 HQ 10bit `.mov` |
+| `4` | `OUT_PRORES_4444` | ProRes 4444 10bit `.mov` |
+| `5` | `OUT_H265_SDR` | H.265 SDR 10bit `.mp4` |
+| `6` | `OUT_PRORES_422_SDR` | ProRes 422 SDR 10bit `.mov` |
+| `7` | `OUT_H265_HW` | HEVC hardware encode (VideoToolbox), HDR10 10bit `.mp4` |
+
+> Note: when `out_type=1` (H.264) is requested for HDR/10bit+ input, it is automatically promoted to `out_type=2` (H.265) to preserve the higher bit depth.
+
+For details, refer to [`transprocess`](#transprocess-method) and the [Output Type Summary](#output-type-summary) table.
 
 #### Color Pipeline in Video Rendering
 
@@ -314,7 +336,7 @@ Output Video File
 For HDR/10bit+ content, frames are read via **PyAV** (not OpenCV):
 
 ```python
-# imgtrans2026.py — PyAV decode path
+# imgtrans_lib/_dm_frame_proc.py — PyAV decode path
 pyav_fmt = "rgb48le"  # 16bit per channel RGB
 img = frame.to_ndarray(format=pyav_fmt)
 ```
@@ -591,17 +613,20 @@ This class is the main component of the Imgtrans library.
 - `plot_w_inc`: Width in inches for the 2D plot output (default is `5`)
 - `plot_h_inc`: Height in inches for the 2D plot output (default is `9`)
 - `xyt_boxel_scale`: Aspect ratio scale for the XYT spacetime cube. When testing with lower resolution video, set this to compensate for resolution differences (default is `1`)
-- `OUT_STILL`, `OUT_H264`, `OUT_H265`, `OUT_PRORES_422`, `OUT_PRORES_4444`, `OUT_H265_SDR`, `OUT_PRORES_422_SDR`: Output type constants (`0`-`6`) used with the `out_type` parameter in rendering methods
+- `OUT_STILL`, `OUT_H264`, `OUT_H265`, `OUT_PRORES_422`, `OUT_PRORES_4444`, `OUT_H265_SDR`, `OUT_PRORES_422_SDR`, `OUT_H265_HW`: Output type constants (`0`-`7`) used with the `out_type` parameter in rendering methods. `OUT_H265_HW` (7) uses the macOS VideoToolbox hardware HEVC encoder for faster HDR10 output.
 
 ### initialization
 The class initialization method takes the attributes of the video path, scan direction, data, and folder name as arguments. This method initializes the instance variables below, creates an output directory at the same level as the video path, and moves to that directory. All output files will be saved within this directory.
 
 #### Parameters
-- `videopath` (str): Path to the video file.
+- `videopath` (str): Path to the input. This can be **either a single video file** (any container ffmpeg/OpenCV can read — `.mov`, `.mp4`, etc.) **or a directory containing an image sequence**. When a directory is given, all `.png` / `.jpg` / `.jpeg` / `.tif` / `.bmp` / `.npy` files inside it are read in sorted order as consecutive frames (frame count = number of files; the FPS is taken from `recfps`/class default since a sequence carries no FPS metadata).
 - `sd` (bool): Direction of the slit. `True` for vertical slit, `False` for horizontal slit.
 - `outdir` (str, optional): Directory indication of the output folder. Default is the same as the input video data path.
 - `datapath` (str, optional): Optional path to previously saved maneuver data, saved as a multi-dimensional array in npy format.
 - `foldername_attr` (str, optional): Optionally appends the specified name to the output directory's name.
+- `another_fps_dir` (str, optional): Directory of additional source videos with differing FPS, enabling multi-FPS rendering (see `some_recfps_array`).
+- `recfps` (float, optional): The **actual** capture FPS of the input. Defaults to the FPS read from the video metadata (`cv2.CAP_PROP_FPS`). Specify this explicitly when the stored metadata FPS differs from the real capture rate (e.g. footage shot at 480fps but stored as 30fps), or to set the frame rate for an image-sequence input.
+- `outfps` (float, optional): Output frame rate. `None` keeps the class default (`30`).
 
 #### Instance Variables
 1. **data**: Maneuver data of the playback section with the slit as the minimum unit. Defaults to an empty list.
@@ -624,7 +649,8 @@ The class initialization method takes the attributes of the video path, scan dir
 1. **input_primaries**: Color primaries of the input video (e.g., `bt2020`, `bt709`). Detected automatically via ffprobe.
 1. **input_transfer**: Transfer characteristics of the input video (e.g., `smpte2084` for PQ, `arib-std-b67` for HLG). Detected automatically.
 1. **input_colorspace**: Color space / matrix of the input video (e.g., `bt2020nc`). Detected automatically.
-1. **is_morethan_8bit**: Boolean flag indicating HDR/high-bit-depth input. When True, rendering takes approximately 2.6x longer.
+1. **is_morethan_8bit**: Boolean flag indicating HDR/high-bit-depth input (bit depth > 8, or a PQ/HLG transfer function). When True, rendering takes approximately 2.6x longer. Detected automatically.
+1. **is_sdr10bit**: Boolean flag indicating SDR 10bit input (BT.709 transfer with bit depth > 8). Detected automatically.
 1. **force_hdr_mode**: Force specific HDR output mode. `None` = follow input, `"hlg"` = force HLG, `"pq"` = force PQ.
 1. **log**: Accumulated maneuver operation log string. Built up by each method call for output filename generation.
 1. **infolog**: Accumulated info log string. Used by `info_setting`.
@@ -748,7 +774,7 @@ print(your_maneuver.data.shape)
     - [`img_to_maneuver`](#img_to_maneuver): Reconstruct `data` from space and time images (16-bit PNG). Params: `space_img_path`(str), `time_img_path`(str), `space_set`(float), `vrange`(float).
     - [`img_to_maneuver_rate_based`](#img_to_maneuver_rate_based): Reconstruct `data` from rate image by integrating. Params: `time_rate_path`(str), `space_img_path`(str), `space_set`(float), `start_time`(float), `rate_range`(float), `rate_baseline`(float), `rate_startpoint`(float).
 - **Methods for video rendering**
-    - [`new_transprocess`](#new_transprocess): Primary HDR rendering method. Params: `separate_num`(int), `sep_start_num`(int), `sep_end_num`(int), `out_type`(int: 0-6), `xy_trans_out`(bool), `render_mode`(int: 0-3), `title_atr`(str), `del_data`(bool), `render_clip_start`(int), `render_clip_end`(int), `slit_step`(int: downscale slit), `scan_step`(int: downscale scan), `use_pyav`(bool).
+    - [`new_transprocess`](#new_transprocess): Primary HDR rendering method. Params: `separate_num`(int), `sep_start_num`(int), `sep_end_num`(int), `out_type`(int: 0-7), `xy_trans_out`(bool), `render_mode`(int: 0-3), `title_atr`(str), `del_data`(bool), `render_clip_start`(int), `render_clip_end`(int), `slit_step`(int: downscale slit), `scan_step`(int: downscale scan), `use_pyav`(bool).
     - [`transprocess`](#transprocess): Legacy OpenCV rendering. Params: `separate_num`(int), `sep_start_num`(int), `sep_end_num`(int), `out_type`(int), `XY_TransOut`(bool), `render_mode`(int), `seqrender`(bool), `title_atr`(str).
     - [`pretransprocess`](#pretransprocess): Fast preview rendering with thinned frames. Params: `outnums`(int, default 100: output frame count), `xy_trans_out`(bool).
 - **Analysis**
@@ -765,7 +791,7 @@ These are not class methods but standalone functions available at the module lev
 - [`export_segments`](#export_segments): Exports A/B segments from a source video with frame number overlay and real-time speed correction. A segments are forward playback; B segments are hflip + reverse.
 - [`rendered_npys_to_mov`](#rendered_npys_to_mov): Combines split-rendered npy files into a single video file. Supports all `out_type` formats (H.264, H.265, ProRes 422, ProRes 4444, etc.).
 - [`rearrange_wide_video`](#rearrange_wide_video): Rearranges a wide panoramic video by interleaving left-half and right-half columns. Can read from npy files or an existing video file.
-- [`rendered_mov_to_seq`](#rendered_mov_to_seq): Extracts frames from a rendered video and saves as an image sequence (jpg, png, etc.). Supports `divide_num` for splitting into subfolders and `frame_array` for selective extraction.
+- [`rendered_mov_to_seq`](#rendered_mov_to_seq): Extracts frames from a rendered video and saves as an image sequence. Params: `video_path`(str), `divide_num`(int: split into subfolders), `img_format`(str: `'jpg'`|`'png'`|`'ultrahdr'`|`'avif'`|`'npy'`), `frame_array`(array: selective extraction), `color_mode`(str: `'source'`|`'sdr'`|`'hlg'`).
 - [`convert_npy_to_jpg`](#convert_npy_to_jpg): Converts a single npy file (saved frame array) to JPEG images.
 - [`custom_blur`](#custom_blur): Applies weighted-mean blur to a data array over a specified frame range and dimension. Used internally by `applyCustomeBlur`.
 - [`custom_onedimention_blur`](#custom_onedimention_blur): 1D weighted-mean blur for a single time array over a specified frame range.
@@ -966,7 +992,7 @@ This method performs video rendering.
 - `separate_num` (int, optional, default: `1`): Specifies how many divisions to perform the rendering.
 - `sep_start_num` (int, optional, default: `0`): Specifies from which division to start when rendering in divisions.
 - `sep_end_num` (int or None, optional, default: `None`): Specifies up to which division to render.
-- `out_type` (int, optional, default: `1`): Specifies the output format. `1` is video, `0` is a still image, and `2` is both video and still image.
+- `out_type` (int, optional, default: `1`): Selects the output codec / format via the class constants (`0`=`OUT_STILL`, `1`=`OUT_H264`, `2`=`OUT_H265`, … `7`=`OUT_H265_HW`). See the [`out_type` Reference Table](#out_type-reference-table). `0` writes a still image sequence; the other values choose a video encoder.
 - `XY_TransOut` (bool, optional, default: `False`): If True, saves the output video rotated by 90 degrees.
 - `render_mode` (int, doptional, default: `0`): Rendering mode. `0` outputs all frames of the maneuver data integrated. `1` outputs only from `sep_start_num` to `sep_end_num`.
 - `seqrender` (bool, optional, default: `False`):This mode converts the input video data once into npy sequences before rendering. The longer the video data, the faster the rendering will be exported. However, be aware that it consumes hard disk space.
@@ -1029,12 +1055,13 @@ bm.new_transprocess(render_clip_start=100, render_clip_end=500)
 | `4` | `OUT_PRORES_4444` | prores_ks | yuv444p10le (10bit) | HDR BT.2020 | .mov | ProRes 4444. No resolution limit |
 | `5` | `OUT_H265_SDR` | libx265 | yuv422p10le (10bit) | SDR BT.709 | .mp4 | H.265 with SDR color tags |
 | `6` | `OUT_PRORES_422_SDR` | prores_ks | yuv422p10le (10bit) | SDR BT.709 | .mov | ProRes 422 HQ with SDR color tags |
+| `7` | `OUT_H265_HW` | hevc_videotoolbox | p010le (10bit) | HDR10 PQ/HLG BT.2020 | .mp4 | macOS VideoToolbox hardware encode. Faster than software libx265 |
 
 > **Resolution limits**: H.264 is limited to 4096×2160, H.265 to 8192×4320. For resolutions exceeding these limits (e.g. wide panoramic renders), use ProRes (`OUT_PRORES_422` or `OUT_PRORES_422_SDR`).
 
 > **`rendered_npys_to_mov`**: The standalone function for combining split-rendered npy files also supports all `out_type` values above. Pass `out_type=None` (default) for legacy cv2 mp4v output.
 > ```python
-> import imgtrans2026_backup as imgtrans
+> import imgtrans
 > imgtrans.rendered_npys_to_mov(
 >     out_dir='path/to/output',          # Output path (without extension)
 >     npys_path='path/to/tmp',           # Folder containing sep-*.npy files
@@ -1136,6 +1163,25 @@ bm.imgtype = ".tif"   # TIFF output (BT.2020 primaries only for HDR)
 ```
 
 The profile is applied automatically by the internal `_save_image_with_profile()` method — no additional user action is needed. The cICP chunk uses ITU-T H.273 code points mapped from ffprobe values (e.g., `bt2020` → 9, `smpte2084` → 16, `arib-std-b67` → 18).
+
+### Still Image Export from a Rendered Video (`rendered_mov_to_seq`)
+
+Beyond the still-image `out_type=0` path (which writes PNG/TIFF/JPEG directly during rendering), the standalone `rendered_mov_to_seq` function extracts frames from an already-rendered video into an image sequence, with several HDR-aware output formats selected via `img_format`:
+
+| `img_format` | Format | Notes |
+|---|---|---|
+| `'ultrahdr'` | **Ultra HDR JPEG** (Gain Map HDR) | Compatible with iOS 18+, Android 14+, and Instagram. Generated via `ultrahdr_app` (ISO 21496), then converted to Adobe `hdrgm`-compatible form. Requires the `ultrahdr_app` binary. |
+| `'png'` | 16bit PNG | Preserves the full HDR gamut; safest option. |
+| `'jpg'` | 8bit JPEG | SDR / Ultra HDR (default). |
+| `'avif'` | 10bit AVIF | HDR-capable, good browser compatibility. |
+| `'npy'` | NumPy array | cv2 fallback. |
+
+`color_mode` controls the color transform: `'source'` keeps the input color-space metadata (default), `'sdr'` tone-maps to BT.709 SDR for maximum compatibility, and `'hlg'` applies a PQ→HLG conversion (requires `zscale`/libzimg, otherwise falls back to `source`).
+
+```python
+import imgtrans
+imgtrans.rendered_mov_to_seq('/path/to/rendered.mov', img_format='ultrahdr')
+```
 
 ### Timecode & Rate Overlay (`overlay_tc_rate`)
 
