@@ -101,3 +101,6 @@
 __pycache__
 
 .DS_Store
+
+# 別リポジトリ(imgtrans-gui)で管理しているため無視
+/test20260526.py

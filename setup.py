@@ -4,6 +4,7 @@ setup(
     name='imgtrans',
     version='0.1',
     packages=find_packages(),
+    py_modules=['imgtrans'],  # imgtrans.py (imgtrans_lib への後方互換シム) も含める
     install_requires=[
         'opencv-python',
         'numpy',
