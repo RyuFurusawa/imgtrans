@@ -23,8 +23,6 @@ from . import easing
 
 from ._utils import (
     custom_blur,
-    custom_onedimention_blur,
-    onedimention_LoopBlur,
     bezier_interpolation,
 )
 

@@ -7,13 +7,10 @@
 - _close_video_sink : シンクをクローズ
 - yuv420_to_rgb     : YUV420 planar → RGB 静的変換ヘルパ
 """
-import os
 import sys
-import json
 import subprocess
 import cv2
 import numpy as np
-import av
 
 
 class IOVideoMixin:

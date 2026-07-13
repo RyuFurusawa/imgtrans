@@ -1,5 +1,5 @@
 
-import subprocess, shlex, itertools
+import subprocess, shlex
 import av
 import numpy as np
 

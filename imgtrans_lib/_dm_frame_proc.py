@@ -8,14 +8,10 @@
 - _determine_output_path / _should_render_now / _should_open_sink
 - _render_images_to_sink / _render_images_to_sink_yuv : セパレート毎の書き出し
 """
-import os
 import sys
 import gc
-import time
-import psutil
 import cv2
 import numpy as np
-import av
 
 from ._jit_kernels import (
     _HAS_NUMBA,

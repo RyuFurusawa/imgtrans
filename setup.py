@@ -8,9 +8,9 @@ setup(
     install_requires=[
         'opencv-python',
         'numpy',
+        'scipy',   # interpolate (splrep/splev/interp1d) を _dm_data_ops で使用
         'psutil',
         'matplotlib',
-        'librosa',
         'av',      # PyAV: HDR/10bit+ decode & YUV-native encode path
         'numba',   # JIT acceleration for YUV-native slit-scan (optional but recommended)
     ],

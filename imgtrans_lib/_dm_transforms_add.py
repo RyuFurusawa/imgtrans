@@ -15,14 +15,10 @@
 import sys
 import math
 import random
-import cv2
 import numpy as np
 from . import easing
-from scipy.special import comb
 
 from ._utils import (
-    bezier_interpolation,
-    closest_value,
     search,
 )
 

@@ -9,7 +9,6 @@ self.data (3D 配列) に対してその場で時間/空間を変形/ぼかす:
 - applySpaceFlip / applySpaceFlat
 - timeFlowKeepingExtend / applyTimeFlowKeepingExtend(_*)
 """
-import os
 import sys
 import math
 import cv2
@@ -18,9 +17,7 @@ from . import easing
 
 from ._utils import (
     custom_blur,
-    custom_onedimention_blur,
     onedimention_LoopBlur,
-    calculate_parallel_perpendicular,
 )
 
 
