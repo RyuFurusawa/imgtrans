@@ -9,7 +9,6 @@ setup(
         'opencv-python',
         'numpy',
         'psutil',
-        'easing-functions',
         'matplotlib',
         'librosa',
         'av',      # PyAV: HDR/10bit+ decode & YUV-native encode path
