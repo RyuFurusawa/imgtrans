@@ -4,7 +4,7 @@ setup(
     name='imgtrans',
     version='0.1',
     packages=find_packages(),
-    py_modules=['imgtrans'],  # imgtrans.py (imgtrans_lib への後方互換シム) も含める
+    py_modules=['imgtrans'],  # imgtrans.py シム。easing/hdr_io は imgtrans_lib パッケージ内へ移設済み
     install_requires=[
         'opencv-python',
         'numpy',

@@ -19,7 +19,7 @@ import math
 import cv2
 import numpy as np
 from scipy.interpolate import splrep, splev, interp1d
-import easing
+from . import easing
 
 from ._utils import (
     custom_blur,

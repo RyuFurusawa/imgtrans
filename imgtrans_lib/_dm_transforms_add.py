@@ -17,7 +17,7 @@ import math
 import random
 import cv2
 import numpy as np
-import easing
+from . import easing
 from scipy.special import comb
 
 from ._utils import (

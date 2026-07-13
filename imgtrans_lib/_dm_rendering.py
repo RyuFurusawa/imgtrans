@@ -23,7 +23,7 @@ import av
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
-from hdr_io import (
+from .hdr_io import (
     open_hdr10_writer,
     eotf_to_scene_linear,
     oetf_from_scene_linear,
