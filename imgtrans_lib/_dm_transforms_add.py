@@ -5,7 +5,7 @@
 - _cut_source_extent / _cut_finalize / addCylinderCut / addBoxUnfoldCut
 - addFreeze / preExtend / addExtend
 - addInterpolation / interpolation
-- rooting8(B) / rootingA(_RANDOM/_single/_trans_single) / rootingAA / rootingB / rooting4C / rooting4D
+- rootingA(_RANDOM/_single/_trans_single) / rootingAA / rootingB / rooting4C
 - addTrans / addKeepSpeedTrans / addInsertKeepSpeedTrans / addWideKeyframeTrans
 - addWaveTrans / addEventHorizonTrans
 - addCycleTrans / addCustomCycleTrans / addWideCustomCycleTrans / addFixWideCycleTrans
@@ -395,27 +395,6 @@ class TransformsAddMixin:
         else :
             print("yp range:",np.amin(wr_array[:,:,0]),np.amax(wr_array[:,:,0]))
         print("zp range:",np.amin(wr_array[:,:,1]),np.amax(wr_array[:,:,1]))
-
-    # addInterpolationの連結性のある８パターンの次々に実行して配列に加えていく。できた配列を返す。
-    def rooting8_interporation(self,FRAME_NUMS):
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=0,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=0,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=1,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=1,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=1,axis_position=0,s_reversal=0,z_reversal=0,zslide=-self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=1,axis_position=0,s_reversal=0,z_reversal=0,zslide=-self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=1,axis_position=1,s_reversal=0,z_reversal=0,zslide=-self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=1,axis_position=1,s_reversal=0,z_reversal=0,zslide=-self.scan_nums,speed_round = True)
-
-    def rooting8B_interporation(self,FRAME_NUMS):
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=0,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=0,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=1,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=1,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=1,axis_position=0,s_reversal=1,z_reversal=1,zslide=self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=1,axis_position=0,s_reversal=1,z_reversal=1,zslide=self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=0,z_direction=1,axis_position=1,s_reversal=1,z_reversal=1,zslide=self.scan_nums,speed_round = True)
-        self.addInterpolation(FRAME_NUMS,i_direction=1,z_direction=1,axis_position=1,s_reversal=1,z_reversal=1,zslide=self.scan_nums,speed_round = True)
 
         # addInterpolationの連結性のある８パターンの次々に実行して配列に加えていく。できた配列を返す。
     def rootingA_interporation(self,FRAME_NUMS,loop_num=2,axis_first_p=0,speed_round=True,interval_nums=0,loopinterval_nums=0):
@@ -904,11 +883,6 @@ class TransformsAddMixin:
         self.interpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=1,s_reversal=0,z_reversal=0,zslide=self.scan_nums,speed_round = True)
         self.interpolation(FRAME_NUMS,i_direction=1,z_direction=1,axis_position=1,s_reversal=0,z_reversal=0,zslide=self.scan_nums,speed_round = True)
 
-    def rooting4D_interporation(self,FRAME_NUMS):
-        self.interpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=0,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
-        self.interpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=0,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.interpolation(FRAME_NUMS,i_direction=0,z_direction=0,axis_position=0,s_reversal=1,z_reversal=1,zslide=0,speed_round = True)
-        self.interpolation(FRAME_NUMS,i_direction=1,z_direction=0,axis_position=0,s_reversal=0,z_reversal=0,zslide=0,speed_round = True)
 
     # wr_arrayに新たなTrans（）の軌跡を加えて返す関数    
     def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True,zscale=1):

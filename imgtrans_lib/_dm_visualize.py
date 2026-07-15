@@ -864,7 +864,7 @@ class VisualizeMixin:
         plt.clf()
         plt.close('all')
 
-    def maneuver_3dplot(self, thread_num=None, thread_through=False, zRangeFix=False, out_framenums=50, out_fps=25, colormode='white',line_width=1,aspect_ratio=(1, 1, 1),elev=25, azim=-40, dpi=200,xticks=False,zticks=False,yticks_normal=True,only_seq_img=False,only_seq_img_num=None,lineplot=True,vectorplot=False,gridplot=True,vector_def_frame=120,velocity=10,vector_color_amp=1.0,s_frame=0,zRangeMin=None,zRangeMax=None):
+    def maneuver_3dplot(self, thread_num=None, thread_through=False, zRangeFix=False, out_framenums=50, out_fps=25, colormode='white',line_width=1,aspect_ratio=(1, 1, 1),elev=25, azim=-40, dpi=200,xticks=False,zticks=False,yticks_normal=True,only_seq_img=False,only_seq_img_num=None,lineplot=True,vectorplot=False,gridplot=True,vector_def_frame=120,velocity=10,vector_color_amp=1.0,s_frame=0,zRangeMin=None,zRangeMax=None,zRangeFollow=False,zRangeFollow_margin=0.2):
         print(sys._getframe().f_code.co_name)
         if thread_through == False:
                 if thread_num != None:
@@ -991,7 +991,14 @@ class VisualizeMixin:
             zMin = np.amin(self.data[i, :, 1])
             zMax = np.amax(self.data[i, :, 1])
             
-            if zRangeFix:
+            if zRangeFollow:
+                # フレームごとに現在の断面の時間レンジへ追従させ、断面を中央に描画する。
+                # (固定レンジだと折り畳み時に時間方向が圧縮して見える問題への対処)
+                span = max(zMax - zMin, 1e-6)
+                pad = span * zRangeFollow_margin
+                ax.set_ylim(zMin - pad, zMax + pad)
+                ax.set_box_aspect(aspect_ratio)
+            elif zRangeFix:
                 ylimmin=allzMin if zRangeMin == None else zRangeMin
                 ylimmax=allzMax if zRangeMax == None else zRangeMax
                 ax.set_ylim(ylimmin, ylimmax) # z軸固定
