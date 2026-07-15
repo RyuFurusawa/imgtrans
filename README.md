@@ -976,6 +976,8 @@ Adds a flat cross-section: space = sequential (a normal frame), time = a fixed v
 bm.addFlat(60, z_pos=1200, z_autofit=False)
 ```
 
+![addFlat (3dplot example)](images/doc_addFlat_3dplot.gif)
+
 ## `addSlicePlane`
 Generates a slit-scan plane (fixed spatial position, sequential time). Only usable when `data` is empty. The flow of time itself appears within a single frame.
 
@@ -1002,11 +1004,15 @@ bm.addCycleTrans(240)
 bm.addFreeze(60)
 ```
 
+![addFreeze (3dplot example)](images/doc_addFreeze_3dplot.gif)
+
 ## `preExtend`
 Extends the head by duplicating the first frame `addframe` times (a frozen intro).
 
 ### Parameters
 - `addframe`(int): Number of frames to add.
+
+![preExtend (3dplot example)](images/doc_preExtend_3dplot.gif)
 
 ## `addExtend`
 Extends the tail by duplicating the last frame `addframe` times (time rate becomes 0). Nearly identical to `addFreeze`, plus a spatial mirror option.
@@ -1014,6 +1020,8 @@ Extends the tail by duplicating the last frame `addframe` times (time rate becom
 ### Parameters
 - `addframe`(int): Number of frames to add.
 - `flip`(bool, optional, default: `False`): Extend with a spatially mirrored cross-section.
+
+![addExtend (3dplot example)](images/doc_addExtend_3dplot.gif)
 
 ## `addCylinderCut`
 Cuts the XYT cube with a cylinder surface and adds one closed-loop frame whose start and end coincide. Samples a circle/ellipse on the (space, time) plane with space=sin(θ), time=cos(θ).
@@ -1119,6 +1127,8 @@ bm.addTrans(100)
 bm.addKeepSpeedTrans(200)   # coast on at the terminal velocity of addTrans
 ```
 
+![addKeepSpeedTrans (3dplot example)](images/doc_addKeepSpeedTrans_3dplot.gif)
+
 ## `addInsertKeepSpeedTrans`
 An extension of `addKeepSpeedTrans`. Computes the intersection of the tail velocity of `data` and the head velocity of `after_array`, inserts bridging frames, then concatenates `after_array` (which is auto time-slid).
 
@@ -1143,6 +1153,8 @@ Expands `scan_nums` by `wide_scale`, then transitions over `frame_nums` frames t
 ```python
 bm.addWideKeyframeTrans(300, key_array=[(1920, 0), (3840, 600)], wide_scale=3)
 ```
+
+![addWideKeyframeTrans (3dplot example)](images/doc_addWideKeyframeTrans_3dplot.gif)
 
 ## `addInterpolation` 
 
@@ -1200,6 +1212,8 @@ A preset that chains `addInterpolation` in pairs `loop_num` times, producing a z
 bm.rootingA_interporation(1200, loop_num=2, interval_nums=60)
 ```
 
+![rootingA_interporation (3dplot example)](images/doc_rootingA_interporation_3dplot.gif)
+
 ## `rootingA_interporation_single`
 A single-unit version of rootingA consisting of two sub-segments. `seg_type` (0-3) selects the combination of spatial direction, axis position, and time direction.
 
@@ -1220,6 +1234,8 @@ A single-unit version of rootingA consisting of two sub-segments. `seg_type` (0-
 bm.rootingA_interporation_single(600, seg_type=0, panorama_nums=120, junction_mode=1)
 ```
 
+![rootingA_interporation_single (3dplot example)](images/doc_rootingA_interporation_single_3dplot.gif)
+
 ## `rootingA_interporation_trans_single`
 The trans-extended variant of `rootingA_interporation_single`: replaces the panorama freeze with a spatial move via `addTrans`.
 
@@ -1228,6 +1244,8 @@ Shares the parameters of `rootingA_interporation_single`, plus:
 - `trans_nums`(int, optional, default: `0`): Frames of the inserted addTrans.
 - `trans_end_line`(float, optional, default: `0`): Target position of addTrans (0-1).
 - `time_flip`(bool, optional, default: `False`): Reverse the time direction.
+
+![rootingA_interporation_trans_single (3dplot example)](images/doc_rootingA_interporation_trans_single_3dplot.gif)
 
 ## `rootingA_interporation_RANDOM`
 A randomized rootingA where each parameter is given as a range. Reproducible with `seed`.
@@ -1247,8 +1265,12 @@ A randomized rootingA where each parameter is given as a range. Reproducible wit
 bm.rootingA_interporation_RANDOM((300, 900), interval_nums_range=(0, 120), loop_num=4, seed=42)
 ```
 
+![rootingA_interporation_RANDOM (3dplot example)](images/doc_rootingA_interporation_RANDOM_3dplot.gif)
+
 ## `rootingAA_interporation`
 A rootingA variant that keeps the same spatial start/end point, producing a loop-like motion anchored on screen. Params: `FRAME_NUMS`(int), `loop_num`(int, default 2), `axis_first_p`(int), `speed_round`(bool).
+
+![rootingAA_interporation (3dplot example)](images/doc_rootingAA_interporation_3dplot.gif)
 
 ## `rootingB_interporation`
 With the axis fixed (`axis_fix_p`), the cross-section topples over continuously like a domino rolling down a slope. Params: `FRAME_NUMS`(int), `loop_num`(int, default 1), `axis_fix_p`(int: 0/1).
@@ -1261,14 +1283,22 @@ A preset that runs 8 connected `addInterpolation` patterns in sequence. Each seg
 bm.rooting8_interporation(150)   # 150×8 = 1200 frames
 ```
 
+![rooting8_interporation (3dplot example)](images/doc_rooting8_interporation_3dplot.gif)
+
 ## `rooting8B_interporation`
 The mirrored variant of `rooting8_interporation` (runs with s/z_reversal=1). Single parameter: `FRAME_NUMS`(int).
+
+![rooting8B_interporation (3dplot example)](images/doc_rooting8B_interporation_3dplot.gif)
 
 ## `rooting4C_interporation`
 A 4-pattern connected preset (two forward + two axis variants). Single parameter: `FRAME_NUMS`(int). Total = `FRAME_NUMS×4`.
 
+![rooting4C_interporation (3dplot example)](images/doc_rooting4C_interporation_3dplot.gif)
+
 ## `rooting4D_interporation`
 A 4-pattern preset variation alternating mirrored segments. Single parameter: `FRAME_NUMS`(int).
+
+![rooting4D_interporation (3dplot example)](images/doc_rooting4D_interporation_3dplot.gif)
 
 ## `addCycleTrans`
 
@@ -1340,6 +1370,8 @@ The wide-output version of `addCustomCycleTrans`. While gradually moving the rot
 bm.addWideCustomCycleTrans(600, cycle_degree=360, start_center=0.3, end_center=0.7, wide_scale=3)
 ```
 
+![addWideCustomCycleTrans (3dplot example)](images/doc_addWideCustomCycleTrans_3dplot.gif)
+
 ## `addFixWideCycleTrans`
 A fixed-width (`width×wide_scale`) wide cycle trans. Starts rotating from a 90-degree offset so the whole section always fits within the wide screen.
 
@@ -1350,6 +1382,8 @@ A fixed-width (`width×wide_scale`) wide cycle trans. Starts rotating from a 90-
 - `t_auto_scaling`(bool, optional, default: `True`): `True` = time range spans the whole input (`count`); `False` = based on spatial size.
 - `extra_degree`(int, optional, default: `0`): Angle offset.
 - `speed_round`(bool, optional, default: `True`): Eased rotation.
+
+![addFixWideCycleTrans (3dplot example)](images/doc_addFixWideCycleTrans_3dplot.gif)
 
 ## `addWaveTrans`
 
@@ -1398,6 +1432,8 @@ Keeps the spatial domain unchanged (when `flow=False`) and creates a time-warp c
 bm.addEventHorizonTrans(300, zdepth=600, cycle_degree=180)
 ```
 
+![addEventHorizonTrans (3dplot example)](images/doc_addEventHorizonTrans_3dplot.gif)
+
 ## `applyTimeFlowKeepingExtend`
 This method extends the current maneuver data (`self.data`) by prepending/appending frames. The way it extends is distinctive: **the spatial dimension (`data[:,:,0]`) holds the position of the first/last frame (stays still)**, while **the time dimension (`data[:,:,1]`, z) is extended keeping the rate of change at the boundary (i.e. the speed at which time flows)**.
 Use it to add "keep flowing at the same speed" run-up / coast-down sections before and after a motion created by addTrans or addCycleTrans. Setting `fade=True` smoothly changes the speed toward `fade_speed` within the extension (useful for intro/outro).
@@ -1427,6 +1463,8 @@ bm.applyTimeFlowKeepingExtend(90, fade=True, intro=True, outro=False, fade_type=
 > If you need to land exactly on a specific time position (z), use the coordinate-based versions that have zero accumulated error: [`applyTimeFlowKeepingExtend_CoodinateBase_Intro`](#applytimeflowkeepingextend_coodinatebase_intro) / [`applyTimeFlowKeepingExtend_CoodinateBase_Outtro`](#applytimeflowkeepingextend_coodinatebase_outtro).
 
 
+![applyTimeFlowKeepingExtend (3dplot example)](images/doc_applyTimeFlowKeepingExtend_3dplot.gif)
+
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Intro`
 Coordinate-based intro extension. Prepends `num_frames` linearly interpolated frames so that the head starts exactly at time `target_z`. The per-slit step is computed as `(data[0,slit,1] - target_z) / num_frames`, guaranteeing zero accumulated error.
 
@@ -1439,12 +1477,16 @@ Coordinate-based intro extension. Prepends `num_frames` linearly interpolated fr
 bm.applyTimeFlowKeepingExtend_CoodinateBase_Intro(target_z=0, num_frames=150)
 ```
 
+![applyTimeFlowKeepingExtend_CoodinateBase_Intro (3dplot example)](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Intro_3dplot.gif)
+
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Outtro`
 Coordinate-based outro extension. Appends `num_frames` linearly interpolated frames so that the tail lands exactly on time `target_z`, with zero accumulated error.
 
 ### Parameters
 - `target_z`(float): Time coordinate the new last frame should reference.
 - `num_frames`(int): Number of extension frames.
+
+![applyTimeFlowKeepingExtend_CoodinateBase_Outtro (3dplot example)](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Outtro_3dplot.gif)
 
 ## `applyTimeForward`
 Adds a forward flow of time to the whole array: frame k gets `slide_time × k` added to its time coordinate.
@@ -1460,11 +1502,15 @@ bm.addFlat(300)
 bm.applyTimeForward(4)   # real-time flow for recfps=120 / outfps=30
 ```
 
+![applyTimeForward (3dplot example)](images/doc_applyTimeForward_3dplot.gif)
+
 ## `applyTimeOblique`
 Adds a time shift proportional to the slit position (0 to `maxgap` frames), tilting the cross-section diagonally in time.
 
 ### Parameters
 - `maxgap`(int): Maximum time shift (frames) at the far edge.
+
+![applyTimeOblique (3dplot example)](images/doc_applyTimeOblique_3dplot.gif)
 
 ## `applyTimeForwardAutoSlow`
 Adds normal-speed (rate 1) intro/outro sections around a slowed-down maneuver and connects them with easing.
@@ -1474,6 +1520,8 @@ Adds normal-speed (rate 1) intro/outro sections around a slowed-down maneuver an
 - `defaultAddTime`(int, optional, default: `100`): Frames added as intro/outro (at least 5 sec = 150 f).
 - `addTimeEasing`(bool, optional, default: `True`): Apply eased connection.
 - `easeRatio`(float, optional, default: `0.3`): Ratio of the eased region.
+
+![applyTimeForwardAutoSlow (3dplot example)](images/doc_applyTimeForwardAutoSlow_3dplot.gif)
 
 ## `applyTimeLoop`
 Reshapes the overall time flow as forward → reversed middle → forward with sine-curve connections, canceling the head/tail time difference to build a seamless loop. The constant-speed sections (`stay_time`) are auto-adjusted based on the gap.
@@ -1491,8 +1539,12 @@ bm.addFlat(1200)
 bm.applyTimeLoop(4)
 ```
 
+![applyTimeLoop (3dplot example)](images/doc_applyTimeLoop_3dplot.gif)
+
 ## `applyTimeLoopB`
 Per-slit version of `applyTimeLoop`: adjusts the constant-speed lengths per slit for maneuvers whose head/tail gap differs per slit. Same parameters (default `stay_time`=90).
+
+![applyTimeLoopB (3dplot example)](images/doc_applyTimeLoopB_3dplot.gif)
 
 ## `applyTimeChoppyLoop`
 Adds a triangle-wave time offset over the whole array. Time shuttles back and forth, and the ends line up, so it can be looped.
@@ -1503,6 +1555,8 @@ Adds a triangle-wave time offset over the whole array. Time shuttles back and fo
 - `phase_shift`(float, optional, default: `0`): Phase offset in units of π.
 - `rise`(float, optional, default: `0.5`) / `fall`(float, optional, default: `0.5`): Ratio of the rising/falling part.
 
+![applyTimeChoppyLoop (3dplot example)](images/doc_applyTimeChoppyLoop_3dplot.gif)
+
 ## `applyTimeChoppyLoopB`
 Extended choppy loop with a sine option and vertex blurring that smooths the fold-back corners of the triangle wave.
 
@@ -1510,6 +1564,8 @@ Extended choppy loop with a sine option and vertex blurring that smooths the fol
 Shares the parameters of `applyTimeChoppyLoop`, plus:
 - `wave_type`(str, optional, default: `'triangle'`): `'triangle'` | `'sine'`.
 - `blur`(int, optional, default: `0`): Non-zero applies a loop blur to the waveform.
+
+![applyTimeChoppyLoopB (3dplot example)](images/doc_applyTimeChoppyLoopB_3dplot.gif)
 
 ## `applyTimeClip`
 Shifts every frame in time so that the trajectory of the specified slit stays fixed at a constant value; the data becomes a relative time structure anchored at that slit.
@@ -1523,6 +1579,8 @@ Shifts every frame in time so that the trajectory of the specified slit stays fi
 bm.applyTimeClip(trackslit=960, cliptime=1800)
 ```
 
+![applyTimeClip (3dplot example)](images/doc_applyTimeClip_3dplot.gif)
+
 ## `applyTimebySpace`
 Adds a time shift proportional to each slit's spatial position, up to `v` frames.
 
@@ -1530,12 +1588,16 @@ Adds a time shift proportional to each slit's spatial position, up to `v` frames
 - `v`(float): Maximum time shift in frames.
 - `mode`(int, optional, default: `0`): `0` = per-slit spatial coordinate, `1` = based on `cycle_axis` (rotation center of CustomCycleTrans), `2` = frame-mean of spatial coordinates.
 
+![applyTimebySpace (3dplot example)](images/doc_applyTimebySpace_3dplot.gif)
+
 ## `applyTimebyKeyframetoSpace`
 Specifies the space→time-shift mapping with keyframes. The keyframe values are spread evenly across the spatial range and spline-interpolated.
 
 ### Parameters
 - `keyframes`(list): List of shift amounts in frames, e.g. `[0, 300, 0]` shifts only the center by 300 frames.
 - `mode`(int, optional, default: `0`): Same basis selection as `applyTimebySpace`.
+
+![applyTimebyKeyframetoSpace (3dplot example)](images/doc_applyTimebyKeyframetoSpace_3dplot.gif)
 
 ## `applyTimeSlide`
 Translates the whole data in time so that the center slit of the base frame references `settime`.
@@ -1597,11 +1659,15 @@ Applies a box blur along the frame axis to the spatial coordinates (`data[:,:,0]
 ### Parameters
 - `bl_time`(int): Blur kernel size in frames.
 
+![applySpaceBlur (3dplot example)](images/doc_applySpaceBlur_3dplot.gif)
+
 ## `applyTimeBlur`
 Applies a box blur along the frame axis to the time coordinates (`data[:,:,1]`), smoothing temporal motion. Internally pads via `timeFlowKeepingExtend`, so the edges keep their velocity.
 
 ### Parameters
 - `bl_time`(int): Blur kernel size in frames.
+
+![applyTimeBlur (3dplot example)](images/doc_applyTimeBlur_3dplot.gif)
 
 ## `applyCustomeBlur`
 Applies a weighted-average blur only to the specified frame range — useful to smooth local kinks such as junctions.
@@ -1610,6 +1676,8 @@ Applies a weighted-average blur only to the specified frame range — useful to 
 - `s_frame`(int) / `e_frame`(int): Frame range.
 - `bl_time`(int): Blur kernel size.
 - `dim_num`(int, optional, default: `1`): `1` = time, `0` = space.
+
+![applyCustomeBlur (3dplot example)](images/doc_applyCustomeBlur_3dplot.gif)
 
 ## `applyLoopBlur`
 Triples `data` by concatenation and blurs across it, yielding a blur continuous across loop boundaries (use `arrayExtract` to take out the middle third afterwards).
@@ -1642,6 +1710,8 @@ Blurs only a region centered at a given frame.
 ## `applySpaceFlip`
 Flips the spatial coordinates left-right (or top-bottom for horizontal slits). No parameters.
 
+![applySpaceFlip (3dplot example)](images/doc_applySpaceFlip_3dplot.gif)
+
 ## `applySpaceFlat`
 Resets the spatial coordinates to the initial sequence (0..scan_nums-1), removing spatial distortion while keeping the time warp. No parameters.
 
@@ -1650,6 +1720,8 @@ Resets the spatial coordinates to the initial sequence (0..scan_nums-1), removin
 bm.addCycleTrans(300)
 bm.applySpaceFlat()   # keep only the time distortion
 ```
+
+![applySpaceFlat (3dplot example)](images/doc_applySpaceFlat_3dplot.gif)
 
 ## `zCenterArange`
 Shifts the whole data so the midpoint of min/max time lands on the input-video center (`count/2`, or a custom value). NaN-safe.
