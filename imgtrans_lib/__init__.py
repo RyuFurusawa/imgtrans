@@ -19,6 +19,7 @@
   _dm_rendering     drawManeuver: transprocess / new_transprocess / pretransprocess /
                                   overlay_tc_rate (メインレンダリング)
   _dm_visualize     drawManeuver: maneuver_2dplot/3dplot/imgplot/animationout など可視化
+  _dm_audio         drawManeuver: audio_render/scd_out_v2/maneuver_fourier_out (音声出力)
 """
 
 # ---- スタンドアロン関数群（旧 imgtrans2026 のトップレベル） ----
@@ -91,6 +92,7 @@ from ._dm_transforms_apply import TransformsApplyMixin
 from ._dm_transforms_add import TransformsAddMixin
 from ._dm_rendering import RenderingMixin
 from ._dm_visualize import VisualizeMixin
+from ._dm_audio import AudioMixin
 
 
 class drawManeuver(
@@ -102,6 +104,7 @@ class drawManeuver(
     TransformsAddMixin,
     RenderingMixin,
     VisualizeMixin,
+    AudioMixin,
 ):
     """画像変換マニューバ用のメインクラス。
 
