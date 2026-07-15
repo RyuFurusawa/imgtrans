@@ -10,7 +10,7 @@ A programming tool for manipulating time and space in video data. It's primarily
 - [Usage Flow](#usage-flow)
   - [1. Library Import](#1-library-import)
   - [2. Initialization of drawManeuver Class](#2-initialization-of-drawmaneuver-class)
-    - [Direction of the Slit](#direction-of-the-slit)
+    - [Direction of the Slit](#slit-direction)
   - [3. Maneuver Design](#3-maneuver-design)
     - [1. Main Methods to Add Spatiotemporal Movement](#1-main-methods-to-add-spatiotemporal-movement)
     - [2. Main Methods to Adapt Flow of Time](#2-main-methods-adapting-the-flow-of-time)
@@ -25,6 +25,12 @@ A programming tool for manipulating time and space in video data. It's primarily
     - [Video Rendering](#video-rendering)
     - [Color Pipeline in Video Rendering](#color-pipeline-in-video-rendering)
     - [Audio Rendering](#audio-rendering)
+        - [How the audio input is resolved](#how-the-audio-input-is-resolved)
+        - [Python-only audio rendering: audio_render](#python-only-audio-rendering-audio_render)
+        - [Integrated audio+video output: audio_video_out](#integrated-audiovideo-output-audio_video_out)
+        - [Improved SuperCollider output: scd_out_v2](#improved-supercollider-output-scd_out_v2)
+        - [Exporting as Fourier components: maneuver_fourier_out](#exporting-as-fourier-components-maneuver_fourier_out)
+        - [Legacy scd_out](#legacy-scd_out)
         - [4 CSV of Maneuver Data](#4-csv-data-of-maneuver)
         - [4 SCD Files](#4-scd-files)
         - [Running the scd File](#running-the-scd-file)
@@ -64,8 +70,9 @@ This tool began its development in 2020 for the production of works by the video
 ## Installation
 Before installing this library, please install the following external libraries:
 ```bash
-pip install opencv-python numpy psutil easing-functions matplotlib librosa av numba
+pip install opencv-python numpy scipy psutil matplotlib av numba
 ```
+- `scipy`: used for trajectory interpolation (interpolate) and for writing WAV files in the audio output (io.wavfile).
 - `av` (PyAV): required for decoding HDR / 10bit+ input video and for the YUV-native encode path.
 - `numba`: optional but recommended — JIT-accelerates the YUV-native slit-scan kernels. If absent, a pure-NumPy fallback is used.
 
@@ -92,7 +99,7 @@ videopath= '/Users/Movies/20230917_RFS3108_mod-HD720p.mov'
 
 # Create an instance of the drawManeuver class.
 # The second variable specifies whether the slit is horizontal or vertical. 0 indicates horizontal slit and 1 indicates vertical slit.
-your_maneuver=imgtrans.drawManeuver(videopath,1)
+bm=imgtrans.drawManeuver(videopath,1)
 ```
 
 #### Slit Direction  
@@ -126,7 +133,7 @@ For more details, please refer to the structure of [`data`](#structure-of-data).
 - [`applyTimeForwardAutoSlow`](#applytimeforwardautoslow): Playback starts at rate 1, slows down, and then returns to rate 1.
 - [`applyTimeLoop`](#applytimeloop): Imparts a seamless loop structure.
 - [`applyTimeClip`](#applytimeclip): Fixes the flow of time for a specified slit to a specified time.
-- [`applyTimeBlur`](#applytimebluR): Applies a temporal blur.
+- [`applyTimeBlur`](#applytimeblur): Applies a temporal blur.
 ![Alt text](images/timeManeuver-examples-3dplot.gif)
 
 #### Examples of Combinations
@@ -143,21 +150,21 @@ There are times when you might want to save just the maneuver data to edit in an
 ##### Saving Maneuver Data
 It will be saved in the designated output directory.
 ```python
-your_maneuver.data_save()
+bm.data_save()
 ```
 
 ##### Loading Maneuver Data
 If initializing.
 ```python
 import numpy as np
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1,datapath="path/to/data.npy" )
+bm=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1,datapath="path/to/data.npy" )
 # Checking the maneuver data
-print(your_maneuver.data.shape)
+print(bm.data.shape)
 ```
 For only replacing the `data`.
 ```python
 import numpy as np
-your_maneuver.data=np.read("path/to/data.npy" )
+bm.data=np.read("path/to/data.npy" )
 ```
 In either case, the loaded video data must be within a coordinate range defined by the size and frame count of the video. For example, if the input video has a resolution of Full HD (1920x1080), and the reference vertical slit's horizontal position is 2000, an error will occur.
 
@@ -183,44 +190,44 @@ This graph displays the following three elements in a single figure, with the ou
 3. Playback rate of movement in the time direction
 
 ```python
-your_maneuver.maneuver_2dplot()
+bm.maneuver_2dplot()
 ```
 By default, 20 slits are generated. By changing the first argument, thread_num, of the maneuver_2dplot method, you can adjust the number of slits displayed.
 ```python
 # Drawing 50 slits
-your_maneuver.maneuver_2dplot(50)
+bm.maneuver_2dplot(50)
 ```
 
 Combining the maneuver design code and the 2D plot of that maneuver data.
 ```python
 # 1. Sequentially connecting the modules for spatiotemporal movement design.
 # Add 100 frames of normal state
-your_maneuver.addFlat(100)
+bm.addFlat(100)
 # Rotate 90 degrees around the left edge of the video frame from the normal state.
-your_maneuver.addInterpolation(100,0,1)
+bm.addInterpolation(100,0,1)
 # Add 100 frames of a maneuver that swaps time and space.
-your_maneuver.addTrans(100)
+bm.addTrans(100)
 
 # 2. Combine modules related to time behavior.
 # Move the entire maneuver forward one frame at a time.
-your_maneuver.applyTimeForward(1)
+bm.applyTimeForward(1)
 # Apply blur to the entire maneuver's movement in the time direction to smooth the transition.
-your_maneuver.applyTimeblur(50)
+bm.applyTimeblur(50)
 
 #### Outputting the 2D plot
-your_maneuver.maneuver_2dplot()
+bm.maneuver_2dplot()
 ```
 
 ![visualized 2dplot image](images/GX010161_2023_0616_Vslit_Flat100+Interpolation300(ID1-ZD0-AP0-REV0)+Freeze30+Transposition300+CycleTrans_addExtend_TimeForward1_TimeBlur30_TimeBlur100_SpaceBlur100_20thread.png)
 
 If you don't need sequential output, please change the class variable's setting.
 ```python
-your_maneuver.auto_visualize_out = False
+bm.auto_visualize_out = False
 ```
 #### 3D Plot
 To output an animation of the maneuver plot to a 3D graph, you need to specify explicitly.
 ```python
-your_maneuver.maneuver_3dplot()
+bm.maneuver_3dplot()
 ```
 
 ![visualized 3dplot gifimage](images/GX010148_2023_0617_Vslit_Flat100+Interpolation300(ID1-ZD0-AP0-REV0)+Freeze30+Transposition300+CycleTrans_addExtend_TimeForward1_TimeBlur30_TimeBlur100_SpaceBlur100_3dPlot.gif)
@@ -241,39 +248,39 @@ The data is stored as a three-dimensional NUMPY array that has two channels for 
 
 Here are some samples to examine `data`:
 ```python
-print("Number of frames in the output video", your_maneuver.data.shape[0])
-print("Scan count, in the case of vertical slits, pixel width of the output video", your_maneuver.data.shape[1])
-print("From what time of the input video was the slit on the far right of the first frame of the output video referenced?", your_maneuver.data[0,-1,1])
-print("Maximum time position to reference from the input video", np.max(your_maneuver.data[:,:,1]))
+print("Number of frames in the output video", bm.data.shape[0])
+print("Scan count, in the case of vertical slits, pixel width of the output video", bm.data.shape[1])
+print("From what time of the input video was the slit on the far right of the first frame of the output video referenced?", bm.data[0,-1,1])
+print("Maximum time position to reference from the input video", np.max(bm.data[:,:,1]))
 
 # Plotting the output position transition of the first slit.
-plt.plot(your_maneuver.data[:,0,0])
+plt.plot(bm.data[:,0,0])
 # Plotting the input time position transition of the first slit.
-plt.plot(your_maneuver.data[:,0,2])
+plt.plot(bm.data[:,0,2])
 ```
 
 #### Video Rendering
 The rendered video data is stored in the export directory created in the same path as the input video.
 ```python
-your_maneuver.transprocess()
+bm.transprocess()
 ```
 If you want to export high-resolution and longer videos, you can handle it by splitting the export. Please set it according to your terminal specs. 
 Intermediate files temporarily create a tmp directory and save the numpy array data (two-dimensional image data) there.
 ```python
-your_maneuver.transprocess(10) # Split and export in 10 parts.
+bm.transprocess(10) # Split and export in 10 parts.
 ```
 You can also set up methods for splitting rendering as an option.  
 There must be a tmp directory in the export directory, and the intermediate data must be stored there. Otherwise, an error will occur in the final data integration process.  
 In the example below, rendering is performed from the 5th step of 10 steps.
 ```python
-your_maneuver.transprocess(10, sep_start_num=5, sep_end_num=10)
+bm.transprocess(10, sep_start_num=5, sep_end_num=10)
 ```
 The `out_type` variable selects the output **codec / format**, not a still-vs-video toggle. `0` exports a series of still images; the other values choose a video encoder:
 
 ```python
-your_maneuver.transprocess(out_type=0)   # still image sequence
-your_maneuver.transprocess(out_type=1)   # H.264 SDR 8bit .mp4 (default)
-your_maneuver.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov (recommended for HDR archival)
+bm.transprocess(out_type=0)   # still image sequence
+bm.transprocess(out_type=1)   # H.264 SDR 8bit .mp4 (default)
+bm.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov (recommended for HDR archival)
 ```
 
 | `out_type` | Constant | Output |
@@ -289,7 +296,7 @@ your_maneuver.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov (recommended
 
 > Note: when `out_type=1` (H.264) is requested for HDR/10bit+ input, it is automatically promoted to `out_type=2` (H.265) to preserve the higher bit depth.
 
-For details, refer to [`transprocess`](#transprocess-method) and the [Output Type Summary](#output-type-summary) table.
+For details, refer to [`transprocess`](#transprocess) and the [Output Type Summary](#output-type-summary) table.
 
 #### Color Pipeline in Video Rendering
 
@@ -531,13 +538,79 @@ use_yuv_native = (
 - `_write_video_frame(use_yuv_native=True)` — Y/Cb/Cr プレーンの書き出し
 
 #### Audio Rendering
-Audio processing itself is done in SuperCollider.  
-First, output the code to be loaded in SuperCollider from the class method `scd_out`.  
-In `scd_out`, the data of the slit movement described in the instance variable `data` is output after reducing the number of slits for voice output.   
-The audio file name can be specified with the instance variable `sc_FNAME`. By default, it is set as [input video file name.aiff]. Please make sure it is saved in the same directory as the input video.  
+There are two ways to apply the same maneuver data (`data`) to sound:
 
-The simultaneous utterance count can be specified as the first argument to 'scd_out'. The default is set to 7.  
-If you increase the number too much, the volume may drop drastically due to frequency cancellation caused by a slight time difference. Please specify an appropriate number based on the maneuver editing content and the acoustic characteristics of the source sound.
+1. **Python-only workflow (recommended)** — render the audio with `audio_render()` and produce an integrated video-with-audio file with `audio_video_out()`. SuperCollider is not required.
+2. **Real-time processing in SuperCollider** — export a .scd file with `scd_out_v2()` (improved, recommended) or `scd_out()` (legacy) and run it in SuperCollider (https://supercollider.github.io).
+
+In both cases the slits are thinned out to `thread_num` voices (default 20), and each voice plays the source sound at a playback position derived from its smoothly interpolated time trajectory.  
+If you increase the number of voices too much, the volume may drop drastically due to frequency cancellation caused by slight time differences. Please choose an appropriate number based on the maneuver editing content and the acoustic characteristics of the source sound.
+
+##### How the audio input is resolved
+The audio input is resolved automatically in the following order:
+1. A file explicitly given via the `audio_path` argument
+2. An audio file with the same name as the input video (`videoname.AIFF` / `.aiff` / `.aif` / `.wav`, the legacy convention)
+3. **The audio track of the input video file itself** (mp4/mov works as-is; you no longer need to prepare a separate AIFF)
+
+##### Python-only audio rendering: audio_render
+The trajectory is smoothly interpolated up to audio rate (by default with band-limited Fourier interpolation, i.e. reconstruction as a superposition of frequency components), and the source sound is read directly at that playback position, producing a stereo WAV. Because playback is position-driven, no click noise occurs and periodic maneuvers such as CycleTrans re-synchronize exactly at the end of each cycle.
+
+```python
+bm.audio_render(thread_num=20, mode="play")   # variable-speed playback (pitch follows the rate)
+bm.audio_render(thread_num=20, mode="grain")  # granular synthesis (pitch preserved)
+```
+
+Main parameters:
+- `mode`: `"play"` (variable-speed playback) / `"grain"` (granular synthesis, pitch preserved)
+- `smooth`: `"fourier"` (band-limited interpolation, default) / `"spline"` (cubic spline)
+- `n_harmonics`: number of strongest frequency components kept in fourier mode. Setting this smooths the trajectory further (None = all components)
+- `inpan_mode`: how the spatial coordinate (reading position) of each slit is reflected in the sound
+  - `"balance"` (default): stereo balance — reading near the left edge emphasizes the source L channel, near the right edge the R channel
+  - `"gain"`: legacy SC-code compatible (spatial coordinate applied as a common gain)
+  - `"none"`: fixed per-voice panning only
+- `grain_dur` / `grain_rate`: grain length [sec] and trigger rate [Hz] for grain mode
+- `jump_thresh_sec`: threshold [sec] for detecting discontinuous jumps in the trajectory. Jumps are split into segments and cross-faded to prevent clicks
+
+##### Integrated audio+video output: audio_video_out
+Call this after rendering the video with `transprocess` etc.; it renders the audio and muxes it into the video in one step, producing a **video with audio**. The video stream is copied without re-encoding, so there is no quality loss (audio: PCM 24bit for .mov, AAC 320k for .mp4).
+
+```python
+bm.transprocess()                                  # render the video
+bm.audio_video_out(thread_num=20, mode="grain")    # render audio + mux in one call
+# → produces *_wAudio.mp4 (.mov) next to the latest video output
+```
+
+- `videopath`: video to mux with (default: the most recently rendered `out_videopath`)
+- `rendered_audio`: reuse an already rendered WAV (if None, `audio_render` is executed internally)
+- All other arguments are passed through to `audio_render`
+
+##### Improved SuperCollider output: scd_out_v2
+For real-time / live use, use the improved SuperCollider export. Instead of the legacy CSV + 30Hz control loop, it writes the interpolated playback positions and balance information as a multi-channel float32 WAV (control track), and the SC side plays back position-driven via `BufRd`. Click noise and the re-synchronization drift of periodic maneuvers are eliminated.
+
+```python
+bm.scd_out_v2(thread_num=20)
+# → *_SCv2ctl-20voices.wav (control track)
+#    *_SCv2_Play-20voices.scd / *_SCv2_Grain-20voices.scd
+```
+
+Each generated .scd plays and records in a single block execution (the legacy two-step execution is not needed). If you need to configure the output device, edit the comment line at the top of the file.
+
+##### Exporting as Fourier components: maneuver_fourier_out
+Exports each voice's time trajectory as a CSV of "trend line + a set of frequency components (frequency, amplitude, phase)". It can be reconstructed as `pos(t) = trend + Σ amp·cos(2πft + φ)`, which is useful for driving an oscillator bank in SuperCollider or for using the trajectory data from native apps written in Swift etc.
+
+```python
+bm.maneuver_fourier_out(thread_num=20, n_harmonics=64)
+```
+
+##### Legacy scd_out
+The legacy `scd_out` is kept unchanged for compatibility, but it has the following known issues. For new projects, `audio_render` / `scd_out_v2` are recommended.
+- 30Hz control updates + piecewise-linear interpolation cause distortion at the interpolation corners
+- The playback position is tracked by integrating the rate, so it drifts and CycleTrans does not re-synchronize exactly at the end of a cycle
+- Periodic re-triggering causes click noise
+- The spatial coordinate (inPan) is applied as a common gain instead of the intended stereo balance
+
+The audio file name can be specified with the instance variable `sc_FNAME`. By default, it is set as [input video file name.AIFF]. Please make sure it is saved in the same directory as the input video.  
+The number of voices can be specified as the first argument of `scd_out`. If omitted, it defaults to 20.
 
 ```python
 bm.sc_FNAME="GX010230-t-AIFF.aiff"
@@ -589,9 +662,14 @@ This can only be executed on a Mac with QuickTime Player, so if you are in a dif
 ```unixcmd
 "open -a 'QuickTime Player' '/Users/Movies/sample-raw-mov/sample_Vslit.mp4' ".unixCmd;
 ```
-#### Combining Voice and Video
-There is no specific program prepared for this.
-Please synchronize the video and audio in a video editing software and then re-export.
+#### Combining Audio and Video
+For the Python-only workflow, [`audio_video_out`](#integrated-audiovideo-output-audio_video_out) handles everything from audio rendering to muxing automatically, so no manual work is needed.
+
+If you use audio recorded in SuperCollider (.aiff), either synchronize the video and audio in a video editing software and re-export, or pass the rendered WAV/AIFF as `rendered_audio` to `audio_video_out`.
+
+```python
+bm.audio_video_out(rendered_audio="rec_from_supercollider.aiff")
+```
 
 ## drawManeuver Class
 
@@ -639,7 +717,7 @@ The class initialization method takes the attributes of the video path, scan dir
 1. **scan_nums**: Number of scans. 3840 for vertical slit at 4k resolution.
 1. **slit_length**: Number of pixels in one slit. 2160 for vertical slit at 4k resolution.
 1. **out_name_attr**: The `foldername_attr` argument from the initialization method is applied directly.
-1. **out_videopath**: Holds the path of the output video. Initially empty. Called in [animationout](#animationout).
+1. **out_videopath**: Holds the path of the output video. Initially empty. Referenced by [animationout](#animationout) and [audio_video_out](#integrated-audiovideo-output-audio_video_out).
 1. **sc_FNAME**: Initially set to automatically accept the input video's filename with ".AIFF" added. Used when outputting code for audio processing in super collider.
 1. **sc_resetPositionMap**, **sc_rateMap**, **sc_inPanMap**, **sc_now_depth**: Arrays optimized for audio processing by reducing the number of slit divisions from the maneuver array.
 1. **cycle_axis**: Array storing rotation center axis positions. Referenced by `applyTimebySpace` (mode=1).
@@ -659,19 +737,19 @@ The class initialization method takes the attributes of the video path, scan dir
 
 #### Example
 ```python
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
+bm=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1)
 ```
 To inherit previously saved maneuver data, refer to the example below:
 ```python
 import numpy as np
-your_maneuver=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1, datapath="path/to/data.npy")
+bm=imgtrans.drawManeuver(videopath="path/to/video.mp4", sd=1, datapath="path/to/data.npy")
 # Check the maneuver data
-print(your_maneuver.data.shape)
+print(bm.data.shape)
 ```
 
 
 ### List of All Class Methods:
-- [`__init__`](#__init__): Initializes by receiving the video path. Params: `videopath`(str), `sd`(bool: slit direction), `outdir`(str), `datapath`(str: npy path), `foldername_attr`(str), `another_fps_dir`(str).
+- [`__init__`](#initialization): Initializes by receiving the video path. Params: `videopath`(str), `sd`(bool: slit direction), `outdir`(str), `datapath`(str: npy path), `foldername_attr`(str), `another_fps_dir`(str). See [Initialization](#initialization) for details.
 - [`append`](#append): Appends the maneuver data created separately to the end of `data`. Params: `maneuver`(ndarray), `auto_zslide`(bool: auto time-adjust, default True), `zslide`(int: manual offset).
 - [`prepend`](#prepend): Adds a maneuver to the beginning of `data`. Params: `maneuver`(ndarray).
 - [`arrayExtract`](#arrayextract): Extracts a range from `data` and rewrites it. Params: `start`(int), `end`(int).
@@ -684,14 +762,9 @@ print(your_maneuver.data.shape)
         - [`addFlat`](#addflat): Adds a flat array. Params: `frame_nums`(int), `z_pos`(int), `z_autofit`(bool), `prepend`(bool), `flip`(bool).
         - [`addFreeze`](#addfreeze): Creates and adds an array of the final row for the number of frames specified. Params: `frame_nums`(int).
         - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis. Params: `frame_nums`(int), `xypoint`(float: spatial position 0-1), `full_range`(bool), `z_start`(float), `z_end`(float).
-        - **3D Geometric Surface Cuts** — Cut XYT space with 3D geometric surfaces to produce a single frame.
-            - [`addSphereCut`](#addsphereCut): Hemisphere cut — dome-shaped time surface. Params: `center_time`(float: time center in frames), `radius`(float: max time deviation in frames), `center_pos`(float: spatial center 0-1, default 0.5), `hemisphere`(int: +1=future, -1=past).
-            - [`addConeCut`](#addconecut): Cone cut — linear falloff from center. Params: `center_time`(float), `height`(float: time deviation at apex), `center_pos`(float, default 0.5), `direction`(int: +1/-1), `exponent`(float: 1.0=cone, 2.0=paraboloid, 0.5=rounded).
-            - [`addCylinderCut`](#addcylindercut): Cylinder surface cut — sinusoidal time surface. Params: `center_time`(float), `radius`(float: amplitude), `cycles`(float: wave count, default 1.0), `phase`(float: radians, default 0.0).
-            - [`addMoebiusCut`](#addmoebiuscut): Möbius strip cut — both space and time twist with a half-turn. Params: `center_time`(float), `time_range`(float: time variation), `space_range`(float: spatial distortion 0-1, default 0.3), `twist`(int: number of half-twists, default 1).
-            - [`addTorusCut`](#addtoruscut): Torus (donut) cut — double undulation from major/minor radii. Params: `center_time`(float), `major_radius`(float), `minor_radius`(float), `center_pos`(float, default 0.5), `phase`(float: tube rotation, default 0.0).
-            - [`addHelixCut`](#addhelixcut): Helix/spiral cut — sinusoidal oscillation with linear drift. Params: `center_time`(float: start time), `radius`(float: oscillation amplitude), `pitch`(float: time drift per cycle), `cycles`(float, default 1.0).
-            - [`addSaddleCut`](#addsaddlecut): Saddle/paraboloid cut — parabolic time variation from center. Params: `center_time`(float), `curvature`(float: +outward=future, -outward=past), `center_pos`(float, default 0.5).
+        - **3D Geometric Surface Cuts** — Cut XYT space with geometric surfaces to produce a single closed-loop frame.
+            - [`addCylinderCut`](#addcylindercut): Cylinder cut — a circular/elliptic loop on the (space, time) plane. Params: `center_time`(float: time center in frames), `center_pos`(float: spatial center 0-1, default 0.5), `time_scale`(float: time-axis scale, default 1.0), `phase`(float: start angle in radians, default 0.0), `output_width`(int: number of output slits, None=auto).
+            - [`addBoxUnfoldCut`](#addboxunfoldcut): Unfolded-box loop cut — normal frame → right-edge slit scan → flipped frame → left-edge slit scan. Params: `center_time`(float), `center_pos`(float, default 0.5), `time_scale`(float, default 1.0), `output_width`(int, None=auto).
         - **Transposition of space and time dimensions**
             - [`addTrans`](#addtrans): Simple transposition of space and time dimensions. Params: `frame_nums`(int), `start_line`(float), `end_line`(float), `speed_round`(bool), `zd`(bool), `zscale`(float).
             - [`addKeepSpeedTrans`](#addkeepspeedtrans): Creates frames maintaining existing speed until a spatial area is reached. Params: `frame_nums`(int), `under_xyp`(float), `over_xyp`(float), `rendertype`(int).
@@ -730,7 +803,7 @@ print(your_maneuver.data.shape)
         - [`applyTimeChoppyLoopB`](#applytimechoppyloopb): Extended choppy loop with sine wave option. Params: `slide_time`(int), `frequency`(int), `phase_shift`(int), `rise`(float), `fall`(float), `wave_type`(str: 'triangle'|'sine'), `blur`(int).
         - [`applyTimeClip`](#applytimeclip): Fix specified slits' time to a specific value. Params: `trackslit`(int: slit index), `cliptime`(float).
         - [`applyTimebySpace`](#applytimebyspace): Shift slits in time based on spatial position. Params: `v`(int: max frame shift), `mode`(int: 0=linear, 1=cycle_axis, 2=mean).
-        - [`applyTimebyKeyframetoSpace`](#applytimebykeyframetospace): Shift slits in time by keyframe values. Params: `keyframes`(list: [(position, value),...]), `mode`(int).
+        - [`applyTimebyKeyframetoSpace`](#applytimebykeyframetospace): Shift slits in time by keyframe values. Params: `keyframes`(list: a list of shift amounts [frames], spread evenly across the spatial range and spline-interpolated), `mode`(int).
         - [`applyTimeSlide`](#applytimeslide): Set reference time of central slit in first frame. Params: `settime`(int: target time in frames), `baseframe`(int, default 0: -1 for last frame).
         - [`applyInOutGapFix`](#applyinoutgapfix): Seamless loop helper — linearly adjusts all frames to match first/last difference. No params.
         - [`applyInFix`](#applyinfix): Adjusts first frame to target, linear blend over all frames. Params: `target_z_array`(ndarray: target time values per slit).
@@ -751,8 +824,8 @@ print(your_maneuver.data.shape)
         - [`addFreeze`](#addfreeze): Generate and add frames based on the final column's array. Params: `frame_nums`(int).
         - [`preExtend`](#preextend): Extend the first frame forward. Params: `addframe`(int: number of frames to prepend).
         - [`addExtend`](#addextend): Extend the final frame. Z-rate becomes 0. Params: `addframe`(int), `flip`(bool: mirror spatial axis).
-        - [`timeFlowKeepingExtend`](#timeflowkeepingextend): Returns an extended array (does not modify `self.data`). Params: `frame_nums`(int), `fade`(bool), `intro`(bool), `outro`(bool), `fade_speed`(int), `fade_type`(str), `space_apply`(bool).
         - [`zCenterArange`](#zcenterarange): Shifts time dimension to center at `count/2`. NaN-safe. Params: `center_time_frame`(int, optional: custom center).
+        - [`zArange`](#zarange): Slides the whole data so that the mean time of a given frame lands on a target time. Params: `target_frame`(int: reference frame), `center_time_frame`(float, None=count/2).
         - [`zStartArange`](#zstartarange): Shifts time dimension so minimum starts at 0. No params.
         - [`zPointCheck`](#zpointcheck): Checks time coordinates are within valid range. Params: `subtract_count`(int, default 0: margin).
         - [`zPointCheckandReflect`](#zpointcheckandreflect): Checks and reflects out-of-range time values. Params: `subtract_count`(int, default 0).
@@ -761,7 +834,12 @@ print(your_maneuver.data.shape)
     - [`dataCheck`](#datacheck): Output `data` shape and min/max to the console. No params.
     - [`info_setting`](#info_setting): Configure data for audio/analysis output. Params: `thread_num`(int, default 20: number of slit divisions), `raw`(bool: output raw arrays).
     - [`maneuver_CSV_out`](#maneuver_csv_out): Output maneuver data to CSV. Params: `thread_num`(int), `time_map`(bool), `space_map`(bool), `time_rate_map`(bool), `now_depth_map`(bool), `space_rate_map`(bool), `movement_rate_map`(bool).
-    - [`scd_out`](#scd_out): Output SuperCollider code and CSV data. Params: `thread_num`(int), `audio_path`(str).
+    - [`scd_out`](#legacy-scd_out): Output SuperCollider code and CSV data (legacy). Params: `thread_num`(int), `audio_path`(str). See [Legacy scd_out](#legacy-scd_out) for details.
+- Audio output methods (see [Audio Rendering](#audio-rendering) for details)
+    - [`audio_render`](#python-only-audio-rendering-audio_render): Render audio inside Python and write a stereo WAV. Params: `thread_num`(int), `audio_path`(str), `mode`(str: "play"|"grain"), `smooth`(str: "fourier"|"spline"), `n_harmonics`(int), `inpan_mode`(str: "balance"|"gain"|"none"), `grain_dur`(float), `grain_rate`(float), `jump_thresh_sec`(float), `normalize`(bool).
+    - [`audio_video_out`](#integrated-audiovideo-output-audio_video_out): Render audio and mux it into the rendered video in one step, producing a video with audio. Params: `thread_num`(int), `videopath`(str), `rendered_audio`(str); other kwargs are passed to `audio_render`.
+    - [`scd_out_v2`](#improved-supercollider-output-scd_out_v2): Output position-driven SuperCollider code + a control-track WAV (improved). Params: `thread_num`(int), `audio_path`(str), `ctl_rate`(int), `smooth`(str), `n_harmonics`(int), `inpan_mode`(str), `grain_dur`(float), `amp`(float).
+    - [`maneuver_fourier_out`](#exporting-as-fourier-components-maneuver_fourier_out): Export each voice's time trajectory as a CSV of Fourier components (frequency, amplitude, phase). Params: `thread_num`(int), `n_harmonics`(int).
     - [`data_save`](#data_save): Save maneuver data as npy. Params: `attr`(str: filename suffix), `sep`(int: split count, 0=no split).
     - [`split_3_npySave`](#split_3_npysave): Split data into 3 parts (L/C/R) and save as npy. No params.
     - [`split_3_npysavereturn`](#split_3_npysavereturn): Same as `split_3_npySave` but returns file paths as array. No params.
@@ -798,6 +876,170 @@ These are not class methods but standalone functions available at the module lev
 - [`double_first_dimension_with_interpolation`](#double_first_dimension_with_interpolation): Doubles the first dimension of a 3D array by inserting interpolated frames between existing ones.
 
 
+## `append`
+Appends a separately created maneuver array to the end of `data`. By default the time gap at the junction is compensated automatically so that time stays continuous.
+
+### Parameters
+- `maneuver`(ndarray): Maneuver array to append. shape=(frames, slits, 2).
+- `auto_zslide`(bool, optional, default: `True`): If `True`, cancels the time gap between the head of `maneuver` and the tail of `data`.
+- `zslide`(int, optional, default: `0`): Manual time offset. A non-zero value takes precedence over `auto_zslide`.
+
+### Usage
+```python
+array = bm.data.copy()
+bm.append(array)      # doubled length with continuous time
+```
+
+## `prepend`
+Prepends a maneuver array to the head of `data`. Unlike `append`, no automatic time-gap compensation is applied.
+
+### Parameters
+- `maneuver`(ndarray): Maneuver array to prepend.
+
+## `arrayExtract`
+Replaces `data` with the specified frame range. Useful e.g. to concatenate copies, blur across the seam, then extract only the middle part.
+
+### Parameters
+- `start`(int): Start frame of the extraction.
+- `end`(int): End frame (exclusive).
+
+### Usage
+```python
+array = bm.data
+bm.append(array); bm.append(array)                 # triple
+bm.applyTimeBlur(100)                              # blur across seams
+bm.arrayExtract(array.shape[0], array.shape[0]*2)  # take the middle
+```
+
+## `arrayReflection`
+Appends a time-reversed copy of `data`, creating a there-and-back (mirror) structure. No parameters.
+
+### Usage
+```python
+bm.addTrans(150)
+bm.arrayReflection()   # 300-frame round trip
+```
+
+## `wide_expandB`
+Extrapolates the motion of the edge slits to extend the spatial dimension of `data` by `add_size` on both sides. Used to prepare wide/panorama output larger than the input video.
+
+### Parameters
+- `add_size`(int, optional, default: `3840`): Number of slits added per side.
+- `sclip`(bool, optional, default: `True`): Clip spatial coordinates to `0..scan_nums-1`.
+- `zclip`(bool, optional, default: `True`): Clip time coordinates to `1..count-1`.
+- `spacedirection`(bool, optional, default: `True`): Direction used when converting out-of-range spatial motion into time motion at the edges.
+- `z_offset`(int, optional, default: `0`): Time offset added per slit step. Produces a gradient where the right edge is in the future and the left edge in the past (matches scenery flowing right to left).
+
+### Usage
+```python
+bm.addCycleTrans(300)
+bm.wide_expandB(add_size=1920, z_offset=1)
+```
+
+## `interpolation_append`
+Smoothly interpolates between the tail of `data` and the head of `maneuver` over `connection_num` frames, then concatenates.
+
+### Parameters
+- `maneuver`(ndarray): Maneuver array to connect.
+- `connection_num`(int): Number of transition frames.
+- `speed_round`(bool, optional, default: `False`): Cosine-eased transition.
+- `add_maneuver`(bool, optional, default: `True`): If `False`, only the transition is added.
+
+## `interpolation_append_byspeed`
+Connects to `maneuver` computing the number of transition frames from a given speed, and automatically blurs the junction in time/space.
+
+### Parameters
+- `maneuver`(ndarray): Maneuver array to connect.
+- `frame_speed`(float): Transition speed in source frames per output frame. Transition length = time gap / frame_speed.
+- `speed_round`(bool, optional, default: `False`): Cosine ease.
+- `add_maneuver`(bool, optional, default: `True`): Whether to append `maneuver` itself.
+- `sblur`(bool, optional, default: `True`) / `tblur`(bool, optional, default: `True`): Apply spatial/temporal blur to the junction.
+- `blur_range`(int, optional, default: `None`): Blur range. None = 1/6 of total length.
+
+### Usage
+```python
+bm.interpolation_append_byspeed(next_array, frame_speed=4)
+```
+
+## `addFlat`
+Adds a flat cross-section: space = sequential (a normal frame), time = a fixed value (i.e. a frozen normal frame), for `frame_nums` frames. Creates `data` if it is empty.
+
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+- `z_pos`(int, optional, default: `0`): Referenced time position (frame number).
+- `z_autofit`(bool, optional, default: `True`): If existing data is present, matches the mean time of the tail (or head when `prepend=True`).
+- `prepend`(bool, optional, default: `False`): Add to the head instead.
+- `flip`(bool, optional, default: `False`): Reverse the spatial order.
+
+### Usage
+```python
+bm.addFlat(60, z_pos=1200, z_autofit=False)
+```
+
+## `addSlicePlane`
+Generates a slit-scan plane (fixed spatial position, sequential time). Only usable when `data` is empty. The flow of time itself appears within a single frame.
+
+### Parameters
+- `frame_nums`(int, optional, default: `1`): Number of frames.
+- `xypoint`(float, optional, default: `0.5`): Slit position (0.0-1.0, ratio of scan_nums).
+- `full_range`(bool, optional, default: `False`): Extend the time axis to the full input video (0..count).
+- `z_start`(float, optional) / `z_end`(float, optional): Directly specify the time range; takes precedence over `full_range`.
+
+### Usage
+```python
+bm.addSlicePlane(frame_nums=1, xypoint=0.5, full_range=True)
+```
+
+## `addFreeze`
+Duplicates the last cross-section for `frame_nums` frames (a complete freeze).
+
+### Parameters
+- `frame_nums`(int): Number of frames to add.
+
+### Usage
+```python
+bm.addCycleTrans(240)
+bm.addFreeze(60)
+```
+
+## `preExtend`
+Extends the head by duplicating the first frame `addframe` times (a frozen intro).
+
+### Parameters
+- `addframe`(int): Number of frames to add.
+
+## `addExtend`
+Extends the tail by duplicating the last frame `addframe` times (time rate becomes 0). Nearly identical to `addFreeze`, plus a spatial mirror option.
+
+### Parameters
+- `addframe`(int): Number of frames to add.
+- `flip`(bool, optional, default: `False`): Extend with a spatially mirrored cross-section.
+
+## `addCylinderCut`
+Cuts the XYT cube with a cylinder surface and adds one closed-loop frame whose start and end coincide. Samples a circle/ellipse on the (space, time) plane with space=sin(θ), time=cos(θ).
+
+### Parameters
+- `center_time`(float): Time coordinate of the circle center (frame number).
+- `center_pos`(float, optional, default: `0.5`): Spatial center (0-1).
+- `time_scale`(float, optional, default: `1.0`): Time-axis scale. 1.0 = a circle relative to spatial range × `xyt_boxel_scale`; 0.5 = wide ellipse; 2.0 = tall ellipse.
+- `phase`(float, optional, default: `0.0`): Start angle offset in radians.
+- `output_width`(int, optional, default: `None`): Number of output slits. None = `int(π × spatial extent)`.
+
+### Usage
+```python
+bm.addCylinderCut(center_time=1800, time_scale=1.0)
+bm.transprocess()   # rendered as a single still frame
+```
+
+## `addBoxUnfoldCut`
+Cuts the XYT cube along the unfolded four edges of a box, producing one closed-loop frame: normal frame → right-edge slit scan → flipped normal frame → left-edge slit scan.
+
+### Parameters
+- `center_time`(float): Time coordinate of the box center.
+- `center_pos`(float, optional, default: `0.5`): Spatial center (0-1).
+- `time_scale`(float, optional, default: `1.0`): Time-axis scale. 1.0 = square unfold.
+- `output_width`(int, optional, default: `None`): Number of output slits. None = computed from the perimeter.
+
 ## `addTrans`
 
 The `addTrans` method is a function to add a new trans maneuver trace to `wr_array` and return it. This method performs the transformation considering cyclic angle changes over a specific number of frames.
@@ -811,7 +1053,7 @@ The `addTrans` method is a function to add a new trans maneuver trace to `wr_arr
 
 ### Usage Example
 ```python
-your_object.addTrans(100, start_line=0, end_line=1, speed_round=True, zd=True)
+bm.addTrans(100, start_line=0, end_line=1, speed_round=True, zd=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Transposition100_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+Transposition100_3dPlot.gif)
@@ -837,7 +1079,7 @@ your_object.addTrans(100, start_line=0, end_line=1, speed_round=True, zd=True)
 
 ### Usage Example
 ```python
-your_object.addBlowupTrans(frame_nums=100, deg=360, speed_round=True, connect_round=1,timevalues=[your_object.count,your_object.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
+bm.addBlowupTrans(frame_nums=100, deg=360, speed_round=True, connect_round=1,timevalues=[bm.count,bm.scan_nums,1,0], timepoints=[0,0.7,0.95,1], timecenter=[0.5,0.5,0.5,0.5])
 ```
 ![Alt text](images/sample_2023_0618_Vslit+addBlowupTrans_3dPlot.gif)
 ![Alt text](images/sample_2023_0618_Hslit+addBlowupTrans_3dPlot.gif)
@@ -861,6 +1103,46 @@ bm.applyTimebySpace(int(6*bm.recfps))#Left to Right TimeGap(sec)
 
 [Click to watch on Vimeo](https://vimeo.com/597510638)
 
+
+## `addKeepSpeedTrans`
+Estimates the spatial/temporal velocity vector and acceleration from the last 2-3 frames of `data`, then keeps extrapolating that motion into new frames. Acceleration 1 = constant speed, <1 = converging, >1 = accelerating. Stops when the spatial position crosses `under_xyp`/`over_xyp` or after `frame_nums` frames.
+
+### Parameters
+- `frame_nums`(int): Maximum number of frames to add.
+- `under_xyp`(float, optional, default: `None`): Upper spatial limit. None = `scan_nums`.
+- `over_xyp`(float, optional, default: `1`): Lower spatial limit.
+- `rendertype`(int, optional, default: `0`): `0` = extrapolate with the slit-averaged vector, `1` = per-slit vectors.
+
+### Usage
+```python
+bm.addTrans(100)
+bm.addKeepSpeedTrans(200)   # coast on at the terminal velocity of addTrans
+```
+
+## `addInsertKeepSpeedTrans`
+An extension of `addKeepSpeedTrans`. Computes the intersection of the tail velocity of `data` and the head velocity of `after_array`, inserts bridging frames, then concatenates `after_array` (which is auto time-slid).
+
+### Parameters
+- `frame_nums`(int): Approximate number of inserted frames.
+- `under_xyp`(float, optional, default: `None`): Upper spatial limit. None = `width-1`.
+- `over_xyp`(float, optional, default: `1`): Lower spatial limit.
+- `after_array`(ndarray): Maneuver array to connect to.
+- `rendertype`(int, optional, default: `0`): `0` = averaged vector, `1` = per slit.
+
+## `addWideKeyframeTrans`
+Expands `scan_nums` by `wide_scale`, then transitions over `frame_nums` frames to each keyframe (spatial position, time position) in `key_array`. For outputs wider than the input video, as in Mid Tide.
+
+### Parameters
+- `frame_nums`(int): Transition frames per keyframe.
+- `key_array`(list): List of keyframes `[(end_line, end_time), ...]`.
+- `wide_scale`(int, optional, default: `3`): Output width multiplier.
+- `start_frame`(list, optional, default: `[0,0]`): Start `[space, time]` when `data` is empty.
+- `speed_round`(bool, optional, default: `False`): Eased transition.
+
+### Usage
+```python
+bm.addWideKeyframeTrans(300, key_array=[(1920, 0), (3840, 600)], wide_scale=3)
+```
 
 ## `addInterpolation` 
 
@@ -888,19 +1170,105 @@ The `interpolation` method is based on the specified maneuver data to perform in
 
 ### Usage
 ```python
-your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=False)
+bm.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD0-AP0-REV0)_3dPlot.gif)
 ```python
-your_object.addInterpolation(100, 0, 1, 1,s_reversal=True,z_reversal=True)
+bm.addInterpolation(100, 0, 1, 1,s_reversal=True,z_reversal=True)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+Interpolation100(ID0-ZD1-AP1-REV1)_3dPlot.gif)
 
 ```python
-your_object.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=True)
+bm.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=True)
 ```
 ![Alt text](images/sample_Vslit_IP180(ID0-ZD0-AP0-SREV0-ZREV1)_3dPlot.gif)
 
+
+## `rootingA_interporation`
+A preset that chains `addInterpolation` in pairs `loop_num` times, producing a zig-zag trajectory that shuttles between normal frames and slit-scan planes. Each segment is `FRAME_NUMS/(loop_num*2)` frames.
+
+### Parameters
+- `FRAME_NUMS`(int): Approximate total frame count.
+- `loop_num`(int, optional, default: `2`): Number of round trips.
+- `axis_first_p`(int, optional, default: `0`): Initial axis position (0/1 = which edge).
+- `speed_round`(bool, optional, default: `True`): Eased motion.
+- `interval_nums`(int, optional, default: `0`): Frozen (addExtend) frames inserted between segments.
+- `loopinterval_nums`(int, optional, default: `0`): Frozen frames inserted between loops.
+
+### Usage
+```python
+bm.rootingA_interporation(1200, loop_num=2, interval_nums=60)
+```
+
+## `rootingA_interporation_single`
+A single-unit version of rootingA consisting of two sub-segments. `seg_type` (0-3) selects the combination of spatial direction, axis position, and time direction.
+
+### Parameters
+- `FRAME_NUMS`(int): Total frames of the unit.
+- `seg_type`(int, optional, default: `0`): `0` = fwd/rev (+1 time), `1` = rev/fwd (-1), `2`/`3` = axis variants.
+- `speed_round`(bool, optional, default: `True`): Eased motion.
+- `interval_nums`(int, optional, default: `0`): Frozen frames between sub-segments.
+- `panorama_nums`(int, optional, default: `0`): `addExtend` (panorama freeze) frames inserted in the middle.
+- `flip_axis`(bool, optional, default: `False`): Flip the axis.
+- `junction_mode`(int, optional, default: `0`): `1` = blur the junction for smoothness.
+- `blur_rate`(int, optional, default: `90`): Blur strength for junction_mode=1.
+- `Second_FRAME_NUMS`(int, optional): Separate frame count for the second half.
+- `center_time_frame`(int, optional): If set, slides the junction frame's time to this value via `zArange`.
+
+### Usage
+```python
+bm.rootingA_interporation_single(600, seg_type=0, panorama_nums=120, junction_mode=1)
+```
+
+## `rootingA_interporation_trans_single`
+The trans-extended variant of `rootingA_interporation_single`: replaces the panorama freeze with a spatial move via `addTrans`.
+
+### Parameters
+Shares the parameters of `rootingA_interporation_single`, plus:
+- `trans_nums`(int, optional, default: `0`): Frames of the inserted addTrans.
+- `trans_end_line`(float, optional, default: `0`): Target position of addTrans (0-1).
+- `time_flip`(bool, optional, default: `False`): Reverse the time direction.
+
+## `rootingA_interporation_RANDOM`
+A randomized rootingA where each parameter is given as a range. Reproducible with `seed`.
+
+### Parameters
+- `FRAME_NUMS_range`(tuple|int): Range `(min,max)` or fixed value for segment frames.
+- `interval_nums_range`(tuple|int, optional, default: `(0,0)`): Range for inter-segment freezes, randomized every loop.
+- `loopinterval_nums_range`(tuple|int, optional, default: `(0,0)`): Range for inter-loop freezes.
+- `loop_num`(int, optional, default: `2`) / `axis_first_p`(int) / `speed_round`(bool): As in rootingA.
+- `seed`(int, optional): Random seed.
+- `clamp_even`(bool, optional, default: `False`): Round to even numbers.
+- `randomize_loopinterval_each_loop`(bool, optional, default: `False`): Randomize the loop interval every loop as well.
+- `min_step_frames`(int, optional, default: `1`): Lower bound to keep segments non-empty.
+
+### Usage
+```python
+bm.rootingA_interporation_RANDOM((300, 900), interval_nums_range=(0, 120), loop_num=4, seed=42)
+```
+
+## `rootingAA_interporation`
+A rootingA variant that keeps the same spatial start/end point, producing a loop-like motion anchored on screen. Params: `FRAME_NUMS`(int), `loop_num`(int, default 2), `axis_first_p`(int), `speed_round`(bool).
+
+## `rootingB_interporation`
+With the axis fixed (`axis_fix_p`), the cross-section topples over continuously like a domino rolling down a slope. Params: `FRAME_NUMS`(int), `loop_num`(int, default 1), `axis_fix_p`(int: 0/1).
+
+## `rooting8_interporation`
+A preset that runs 8 connected `addInterpolation` patterns in sequence. Each segment is `FRAME_NUMS` frames, so the total is `FRAME_NUMS×8`. Single parameter: `FRAME_NUMS`(int).
+
+### Usage
+```python
+bm.rooting8_interporation(150)   # 150×8 = 1200 frames
+```
+
+## `rooting8B_interporation`
+The mirrored variant of `rooting8_interporation` (runs with s/z_reversal=1). Single parameter: `FRAME_NUMS`(int).
+
+## `rooting4C_interporation`
+A 4-pattern connected preset (two forward + two axis variants). Single parameter: `FRAME_NUMS`(int). Total = `FRAME_NUMS×4`.
+
+## `rooting4D_interporation`
+A 4-pattern preset variation alternating mirrored segments. Single parameter: `FRAME_NUMS`(int).
 
 ## `addCycleTrans`
 
@@ -916,7 +1284,7 @@ The `addCycleTrans` method is used to add cyclical transformations (trans) to th
 
 ### Usage
 ```python            
-your_object.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra_degree=5, speed_round=False)
+bm.addCycleTrans(100, cycle_degree=360, zscaling=True, zslide=10, extra_degree=5, speed_round=False)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CycleTrans360-zscale0_3dPlot.gif)
 
@@ -944,7 +1312,7 @@ The `addCustomCycleTrans` class function allows you to freely move the central a
 
 ### Usage
 ```python
-your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_center=0.7)
+bm.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_center=0.7)
 ```
 ![Alt text](images/sample_2023_0618_Vslit+CustomCycleTrans360-zscale0_3dPlot.gif)
 
@@ -953,6 +1321,35 @@ your_object.addCustomCycleTrans(100, cycle_degree=360, start_center=0.2, end_cen
 
 [Click to watch on Vimeo](https://vimeo.com/842051869)
 
+
+## `addWideCustomCycleTrans`
+The wide-output version of `addCustomCycleTrans`. While gradually moving the rotation axis, the edge slits outside the center are displayed with time offsets, unfolding the rotating cross-section on a screen wider than the input video.
+
+### Parameters
+- `frame_nums`(int): Frames to add.
+- `cycle_degree`(int): Rotation angle.
+- `start_center`(float) / `end_center`(float): Start/end position of the rotation center (0-1).
+- `maxz_range`(int, optional, default: `None`): Maximum time range. None = total input frames (`count`).
+- `wide_scale`(int, optional, default: `3`): Output width multiplier.
+- `t_auto_scaling`(bool, optional, default: `False`): Automatic time scaling.
+- `extra_degree`(int, optional, default: `0`): Start-angle offset.
+- `speed_round`(bool, optional, default: `True`): Eased rotation.
+
+### Usage
+```python
+bm.addWideCustomCycleTrans(600, cycle_degree=360, start_center=0.3, end_center=0.7, wide_scale=3)
+```
+
+## `addFixWideCycleTrans`
+A fixed-width (`width×wide_scale`) wide cycle trans. Starts rotating from a 90-degree offset so the whole section always fits within the wide screen.
+
+### Parameters
+- `frame_nums`(int): Frames to add.
+- `cycle_degree`(int): Rotation angle.
+- `wide_scale`(int, optional, default: `3`): Output width multiplier.
+- `t_auto_scaling`(bool, optional, default: `True`): `True` = time range spans the whole input (`count`); `False` = based on spatial size.
+- `extra_degree`(int, optional, default: `0`): Angle offset.
+- `speed_round`(bool, optional, default: `True`): Eased rotation.
 
 ## `addWaveTrans`
 
@@ -968,13 +1365,13 @@ The `addWaveTrans` method generates a playback cross-section with dynamic wavefo
 
 ### Usage Example
 ```python
-your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=False)
+bm.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=False)
 ```
 ![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xfix_3dPlot.gif)
 ![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yfix_3dPlot.gif)
 
 ```python
-your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=True)
+bm.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=True)
 ```
 ![Sample Vslit](images/sample_2023_0618_Vslit+WaveTrans180xflow_3dPlot.gif)
 ![Saple Hslit](images/sample_2023_0618_Hslit+WaveTrans180yflow_3dPlot.gif)
@@ -984,6 +1381,433 @@ your_object.addWaveTrans(frame_nums=8000, cycle_degree=90, zdepth=1500, flow=Tru
 
 [Click to watch on Vimeo](https://vimeo.com/663872580)
 
+
+## `addEventHorizonTrans`
+Keeps the spatial domain unchanged (when `flow=False`) and creates a time-warp cross-section where time flows at different speeds between the screen center and the periphery. With `cycle_degree=180` the center advances while the periphery reverses and gradually returns; `360` additionally passes through a full inversion. The amplitude oscillates with the envelope `sin(π·z_osc·i/N)`.
+
+### Parameters
+- `frame_nums`(int): Frames to add.
+- `zdepth`(float): Maximum time amplitude in frames.
+- `z_osc`(int, optional, default: `1`): Number of envelope oscillations.
+- `cycle_degree`(int, optional, default: `180`): Wavelength of the on-screen time warp.
+- `flow`(bool, optional, default: `False`): Also move the spatial domain.
+- `zslide`(int, optional, default: `0`): Time offset.
+
+### Usage
+```python
+bm.addEventHorizonTrans(300, zdepth=600, cycle_degree=180)
+```
+
+## `applyTimeFlowKeepingExtend`
+This method extends the current maneuver data (`self.data`) by prepending/appending frames. The way it extends is distinctive: **the spatial dimension (`data[:,:,0]`) holds the position of the first/last frame (stays still)**, while **the time dimension (`data[:,:,1]`, z) is extended keeping the rate of change at the boundary (i.e. the speed at which time flows)**.
+Use it to add "keep flowing at the same speed" run-up / coast-down sections before and after a motion created by addTrans or addCycleTrans. Setting `fade=True` smoothly changes the speed toward `fade_speed` within the extension (useful for intro/outro).
+
+### Parameters
+- `frame_nums`(int): Number of frames to extend by. It is applied to `intro` and `outro` separately, so when both are `True` the total increases by `frame_nums × 2` frames.
+- `fade`(bool, optional, default: `False`): If `True`, ease the speed in the extension toward `fade_speed`. If `False`, extend at constant speed, keeping the boundary speed.
+- `intro`(bool, optional, default: `True`): If `True`, prepend (extend backward).
+- `outro`(bool, optional, default: `True`): If `True`, append (extend forward).
+- `fade_speed`(float, optional, default: `0`): Target speed when `fade=True`. **The unit is "how much z advances per one output frame" (= playback rate × `recfps/outfps`)**. `0` is a full stop, `recfps/outfps` is constant real speed (playback rate 1.0).
+- `fade_type`(str, optional, default: `"inout"`): Easing type, `"inout"` / `"in"` / `"out"`. Note: currently the outro side uses `inOutQuad` regardless of this setting (the intro side honors it).
+- `space_apply`(bool, optional, default: `False`): If `True`, extend the spatial dimension too, keeping the boundary rate of change. `False` (default) holds the space still.
+
+### Usage Example
+```python
+# After addTrans, add a 60-frame "keep flowing at the same speed" section before and after
+bm.addTrans(100)
+bm.applyTimeFlowKeepingExtend(60)
+
+# Extend only the tail and decelerate to a smooth stop there (for an outro)
+bm.applyTimeFlowKeepingExtend(90, fade=True, intro=False, outro=True)
+
+# Accelerate from a stop into the main part at the head (for an intro)
+bm.applyTimeFlowKeepingExtend(90, fade=True, intro=True, outro=False, fade_type="in")
+```
+
+> If you need to land exactly on a specific time position (z), use the coordinate-based versions that have zero accumulated error: [`applyTimeFlowKeepingExtend_CoodinateBase_Intro`](#applytimeflowkeepingextend_coodinatebase_intro) / [`applyTimeFlowKeepingExtend_CoodinateBase_Outtro`](#applytimeflowkeepingextend_coodinatebase_outtro).
+
+
+## `applyTimeFlowKeepingExtend_CoodinateBase_Intro`
+Coordinate-based intro extension. Prepends `num_frames` linearly interpolated frames so that the head starts exactly at time `target_z`. The per-slit step is computed as `(data[0,slit,1] - target_z) / num_frames`, guaranteeing zero accumulated error.
+
+### Parameters
+- `target_z`(float): Time coordinate (frame number) the new head frame should reference.
+- `num_frames`(int): Number of extension frames.
+
+### Usage
+```python
+bm.applyTimeFlowKeepingExtend_CoodinateBase_Intro(target_z=0, num_frames=150)
+```
+
+## `applyTimeFlowKeepingExtend_CoodinateBase_Outtro`
+Coordinate-based outro extension. Appends `num_frames` linearly interpolated frames so that the tail lands exactly on time `target_z`, with zero accumulated error.
+
+### Parameters
+- `target_z`(float): Time coordinate the new last frame should reference.
+- `num_frames`(int): Number of extension frames.
+
+## `applyTimeForward`
+Adds a forward flow of time to the whole array: frame k gets `slide_time × k` added to its time coordinate.
+
+### Parameters
+- `slide_time`(float, optional, default: `None`): Source frames advanced per output frame. None = `outfps/recfps`. For real-time speed (rate 1.0) pass `recfps/outfps`.
+- `start_frame`(int, optional, default: `0`): First frame the flow applies to.
+- `end_frame`(int, optional, default: `None`): Last frame; later frames get the final shift added uniformly.
+
+### Usage
+```python
+bm.addFlat(300)
+bm.applyTimeForward(4)   # real-time flow for recfps=120 / outfps=30
+```
+
+## `applyTimeOblique`
+Adds a time shift proportional to the slit position (0 to `maxgap` frames), tilting the cross-section diagonally in time.
+
+### Parameters
+- `maxgap`(int): Maximum time shift (frames) at the far edge.
+
+## `applyTimeForwardAutoSlow`
+Adds normal-speed (rate 1) intro/outro sections around a slowed-down maneuver and connects them with easing.
+
+### Parameters
+- `slide_time`(int, optional, default: `1`): Time advance of the slow part.
+- `defaultAddTime`(int, optional, default: `100`): Frames added as intro/outro (at least 5 sec = 150 f).
+- `addTimeEasing`(bool, optional, default: `True`): Apply eased connection.
+- `easeRatio`(float, optional, default: `0.3`): Ratio of the eased region.
+
+## `applyTimeLoop`
+Reshapes the overall time flow as forward → reversed middle → forward with sine-curve connections, canceling the head/tail time difference to build a seamless loop. The constant-speed sections (`stay_time`) are auto-adjusted based on the gap.
+
+### Parameters
+- `slide_time`(float): Time advance of the forward part (frames per output frame).
+- `freq`(int, optional, default: `2`): Frequency. Currently only 2 is supported.
+- `stay_time`(int, optional, default: `30`): Base length of the constant-speed sections.
+- `intepolation_min`(int, optional, default: `300`): Minimum length of the sine sections.
+- `stay_time_min`(int, optional, default: `30`): Minimum constant-speed length.
+
+### Usage
+```python
+bm.addFlat(1200)
+bm.applyTimeLoop(4)
+```
+
+## `applyTimeLoopB`
+Per-slit version of `applyTimeLoop`: adjusts the constant-speed lengths per slit for maneuvers whose head/tail gap differs per slit. Same parameters (default `stay_time`=90).
+
+## `applyTimeChoppyLoop`
+Adds a triangle-wave time offset over the whole array. Time shuttles back and forth, and the ends line up, so it can be looped.
+
+### Parameters
+- `slide_time`(float, optional, default: `None`): Amplitude scale. None = `outfps/recfps`.
+- `frequency`(int, optional, default: `1`): Number of waves.
+- `phase_shift`(float, optional, default: `0`): Phase offset in units of π.
+- `rise`(float, optional, default: `0.5`) / `fall`(float, optional, default: `0.5`): Ratio of the rising/falling part.
+
+## `applyTimeChoppyLoopB`
+Extended choppy loop with a sine option and vertex blurring that smooths the fold-back corners of the triangle wave.
+
+### Parameters
+Shares the parameters of `applyTimeChoppyLoop`, plus:
+- `wave_type`(str, optional, default: `'triangle'`): `'triangle'` | `'sine'`.
+- `blur`(int, optional, default: `0`): Non-zero applies a loop blur to the waveform.
+
+## `applyTimeClip`
+Shifts every frame in time so that the trajectory of the specified slit stays fixed at a constant value; the data becomes a relative time structure anchored at that slit.
+
+### Parameters
+- `trackslit`(int): Index of the anchor slit.
+- `cliptime`(float, optional, default: `None`): Fixed time position. None = 0.
+
+### Usage
+```python
+bm.applyTimeClip(trackslit=960, cliptime=1800)
+```
+
+## `applyTimebySpace`
+Adds a time shift proportional to each slit's spatial position, up to `v` frames.
+
+### Parameters
+- `v`(float): Maximum time shift in frames.
+- `mode`(int, optional, default: `0`): `0` = per-slit spatial coordinate, `1` = based on `cycle_axis` (rotation center of CustomCycleTrans), `2` = frame-mean of spatial coordinates.
+
+## `applyTimebyKeyframetoSpace`
+Specifies the space→time-shift mapping with keyframes. The keyframe values are spread evenly across the spatial range and spline-interpolated.
+
+### Parameters
+- `keyframes`(list): List of shift amounts in frames, e.g. `[0, 300, 0]` shifts only the center by 300 frames.
+- `mode`(int, optional, default: `0`): Same basis selection as `applyTimebySpace`.
+
+## `applyTimeSlide`
+Translates the whole data in time so that the center slit of the base frame references `settime`.
+
+### Parameters
+- `settime`(int): Target time position (frame number).
+- `baseframe`(int, optional, default: `0`): Base frame. `-1` = last frame.
+
+### Usage
+```python
+bm.applyTimeSlide(0)          # align the head with the start of the input
+bm.applyTimeSlide(3600, -1)   # align the tail with frame 3600
+```
+
+## `applyInOutGapFix`
+Distributes the head/tail time difference linearly over all frames to cancel it (seamless-loop helper). No parameters.
+
+## `applyInFix`
+Makes the head frame's time coordinates match `target_z_array`, blending linearly while keeping the tail fixed.
+
+### Parameters
+- `target_z_array`(ndarray): Per-slit target time values (shape=(scan_nums,)).
+
+## `applyOutFix`
+Makes the tail frame match `target_z_array`, keeping the head fixed; eased by default.
+
+### Parameters
+- `target_z_array`(ndarray): Per-slit target time values.
+- `ease`(bool, optional, default: `True`): Ease-in-out blending; `False` = linear.
+
+## `applyInPartFix`
+Partial fix: adjusts only frames 0..`b_frame` with easing so that the time at `a_frame` equals `target_z`.
+
+### Parameters
+- `target_z`(float): Target time.
+- `a_frame`(int): Frame to match.
+- `b_frame`(int): Frame where the correction fades to zero.
+
+## `applyOutPartFix`
+Partial fix on the tail side: adjusts frames from `a_frame` on with easing so that the time at `b_frame` (probe slit `b_frame_s_point`) equals `target_z`.
+
+### Parameters
+- `target_z`(float): Target time.
+- `a_frame`(int): Blend start frame.
+- `b_frame`(int): Frame to match.
+- `b_frame_s_point`(int, optional, default: `None`): Probe slit. None = center slit.
+
+## `applyOutPartFixB`
+Array version of `applyOutPartFix`: adjusts frames after `a_frame` toward per-slit targets `target_z_array`.
+
+### Parameters
+- `target_z_array`(ndarray): Per-slit target time values.
+- `a_frame`(int) / `b_frame`(int): Blend range.
+- `base_z_array`(ndarray, optional, default: `None`): Baseline for the gap computation. None = `data[b_frame,:,1]`.
+
+## `applySpaceBlur`
+Applies a box blur along the frame axis to the spatial coordinates (`data[:,:,0]`), smoothing spatial motion.
+
+### Parameters
+- `bl_time`(int): Blur kernel size in frames.
+
+## `applyTimeBlur`
+Applies a box blur along the frame axis to the time coordinates (`data[:,:,1]`), smoothing temporal motion. Internally pads via `timeFlowKeepingExtend`, so the edges keep their velocity.
+
+### Parameters
+- `bl_time`(int): Blur kernel size in frames.
+
+## `applyCustomeBlur`
+Applies a weighted-average blur only to the specified frame range — useful to smooth local kinks such as junctions.
+
+### Parameters
+- `s_frame`(int) / `e_frame`(int): Frame range.
+- `bl_time`(int): Blur kernel size.
+- `dim_num`(int, optional, default: `1`): `1` = time, `0` = space.
+
+## `applyLoopBlur`
+Triples `data` by concatenation and blurs across it, yielding a blur continuous across loop boundaries (use `arrayExtract` to take out the middle third afterwards).
+
+### Parameters
+- `sblur`(int) / `tblur`(int): Spatial/temporal blur kernel size. 0 disables.
+
+### Usage
+```python
+n = bm.data.shape[0]
+bm.applyLoopBlur(0, 100)
+bm.arrayExtract(n, n*2)
+```
+
+## `applyConnectLoopBlur`
+Blurs only the loop junction (the `connect_frame` frames around head and tail). Data length is unchanged.
+
+### Parameters
+- `sblur`(int) / `tblur`(int): Blur kernel sizes.
+- `connect_frame`(int, optional, default: `100`): Range around the junction.
+
+## `applyPointBlur`
+Blurs only a region centered at a given frame.
+
+### Parameters
+- `point_frame`(int): Center frame.
+- `sblur`(int) / `tblur`(int): Blur kernel sizes.
+- `range_frame`(int, optional, default: `100`): Half range around the center.
+
+## `applySpaceFlip`
+Flips the spatial coordinates left-right (or top-bottom for horizontal slits). No parameters.
+
+## `applySpaceFlat`
+Resets the spatial coordinates to the initial sequence (0..scan_nums-1), removing spatial distortion while keeping the time warp. No parameters.
+
+### Usage
+```python
+bm.addCycleTrans(300)
+bm.applySpaceFlat()   # keep only the time distortion
+```
+
+## `zCenterArange`
+Shifts the whole data so the midpoint of min/max time lands on the input-video center (`count/2`, or a custom value). NaN-safe.
+
+### Parameters
+- `center_time_frame`(int, optional, default: `None`): Custom center. None = `count/2`.
+
+## `zArange`
+Slides the whole data so that the mean time of the specified frame lands on the target time. Unlike `zCenterArange` (which uses the overall min/max midpoint), this anchors on a specific frame.
+
+### Parameters
+- `target_frame`(int): Frame index in `data` used as the anchor.
+- `center_time_frame`(float, optional, default: `None`): Target time. None = `count/2`.
+
+## `zStartArange`
+Shifts the whole data so the minimum time coordinate becomes 0. No parameters.
+
+## `zPointCheck`
+Checks that the time coordinates fit within the valid range (0..`count`) and auto-adjusts if not: shifts when possible, otherwise scales the time axis. Use as a safety check before rendering.
+
+### Parameters
+- `subtract_count`(int, optional, default: `0`): Margin on the upper side (`count - subtract_count`).
+
+### Usage
+```python
+bm.zPointCheck()
+bm.transprocess()
+```
+
+## `zPointCheckandReflect`
+Instead of shifting/scaling, reflects out-of-range time coordinates back at the boundaries.
+
+### Parameters
+- `subtract_count`(int, optional, default: `0`): Upper-side margin.
+
+## `spline_interpolate`
+Generic helper that interpolates a list of keyframe values (spread evenly across the spatial range) with spline/linear/bezier, returning values at positions `x`. Used internally by `applyTimebyKeyframetoSpace`.
+
+### Parameters
+- `x`(ndarray): Positions (slit coordinates) to evaluate.
+- `keyframes`(list): List of values, spread evenly over `scan_nums`.
+- `method`(str, optional, default: `'spline'`): `'spline'` | `'linear'` | `'bezier'`.
+
+## `dataCheck`
+Prints the shape of `data` and the min/max of the spatial/temporal coordinates. No parameters.
+
+## `info_setting`
+Thins `data` down to `thread_num` slits and computes the derived maps used by audio/CSV output (`sc_resetPositionMap` = time positions, `sc_rateMap` = playback rates, `sc_inPanMap` = spatial positions, `sc_now_depth` = time depth per frame, etc.). Called automatically by `scd_out`/`maneuver_CSV_out`, but usable on its own.
+
+### Parameters
+- `thread_num`(int, optional, default: `20`): Number of slits after thinning.
+- `raw`(bool, optional, default: `False`): Use all slits without thinning.
+
+## `maneuver_CSV_out`
+Outputs the maneuver data as CSVs with headers readable by After Effects etc. Each boolean flag selects a map to export.
+
+### Parameters
+- `thread_num`(int, optional): Slit thinning count.
+- `time_map`(bool, default: `True`): Export the time-position map (ResetP).
+- `space_map`(bool, default: `True`): Export the spatial-position map (inPanMap).
+- `time_rate_map`(bool, default: `True`): Export the playback-rate map.
+- `now_depth_map`(bool, default: `False`): Export the per-frame time depth.
+- `space_rate_map`(bool, default: `False`): Export the spatial-direction rate.
+- `movement_rate_map`(bool, default: `False`): Export the total movement rate.
+
+## `data_save`
+Saves the maneuver `data` as an npy file, reusable later via the `datapath` argument or `np.load`.
+
+### Parameters
+- `attr`(str, optional, default: `None`): Filename suffix.
+- `sep`(int, optional, default: `0`): Non-zero saves the data split into `sep` parts along the frame axis.
+
+### Usage
+```python
+bm.data_save()
+# later: bm = imgtrans.drawManeuver("video.mp4", 1, datapath="saved_data.npy")
+```
+
+## `split_3_npySave`
+Saves `data` split spatially into Left/Center/Right npy files (for split rendering of wide outputs), plus the concatenated npy. No parameters.
+
+## `split_3_npysavereturn`
+Same as `split_3_npySave` but returns the saved file paths as an array. No parameters.
+
+## `vsizeReturn`
+Returns the output image size `(width, height)` according to the class variable `img_size_type`. No parameters.
+
+## `maneuver_2dplot`
+Outputs 2D plots (time position, rate, etc.) of the maneuver as PNG. Runs automatically after each transform when `auto_visualize_out=True`. With `video_out=True` it also renders a plot video with a seek bar.
+
+### Main parameters
+- `thread_num`(int, optional): Number of slits to plot.
+- `axnum`(int, optional, default: `3`): Number of graphs to draw (0-7).
+- `colormode`(str, optional, default: `'black'`): Color scheme.
+- `s_frame`/`e_frame`(int, optional): Frame range to draw.
+- `video_out`(bool, optional, default: `False`): Output a seek-bar video.
+- `video_alpha`(bool, optional, default: `False`): Transparent video (ProRes 4444).
+- `individual_output`(bool, optional, default: `False`): Save each graph as a separate file.
+
+### Usage
+```python
+bm.maneuver_2dplot(50)
+bm.maneuver_2dplot(video_out=True)
+```
+
+## `maneuver_3dplot`
+Plots the maneuver as 3D cross-sections inside the XYT cube and outputs a rotating animation (image sequence + video).
+
+### Main parameters
+- `thread_num`(int, optional): Number of slits to plot.
+- `out_framenums`(int, default: `50`) / `out_fps`(int, default: `25`): Output length and fps.
+- `colormode`(str, default: `'white'`): Background scheme.
+- `aspect_ratio`(tuple, default: `(1,1,1)`): XYZ aspect.
+- `elev`/`azim`(float, default: `25`/`-40`): Camera elevation/azimuth.
+- `zRangeFix`(bool, default: `False`): Fix the time axis to the full input range.
+- `lineplot`(bool, default: `True`) / `vectorplot`(bool, default: `False`): Section lines / motion vectors (with `vector_def_frame`, `velocity`, `vector_color_amp`).
+- `only_seq_img`(bool, default: `False`): Output only the image sequence.
+
+## `maneuver_3dplot_midtide`
+Mid Tide-style 3D plot preset for wide maneuvers. Parameters shared with the main options of `maneuver_3dplot` (`thread_num`, `zRangeFix`, `out_framenums`, `out_fps`, `colormode`, `aspect_ratio`, `elev`, `azim`, `dpi`).
+
+## `maneuver_imgplot`
+Exports the maneuver as 16-bit PNG map images (space / time / rate). Normalization parameters are embedded in the filenames so the maps can be converted back into `data` with [`img_to_maneuver`](#img_to_maneuver) — enabling an edit-in-image-editor round trip.
+
+### Parameters
+- `plot_mode`(str, optional, default: `"all"`): `"space"` | `"time"` | `"rate"` or combinations; `"all"` = all three.
+- `colormode`(str, optional, default: `'black'`): Preview colors.
+- `nticks_x`/`nticks_y`(int, optional, default: `4`): Tick counts.
+- `save_png`(bool, optional, default: `True`): Save the 16-bit PNG maps.
+- `time_axis`(str, optional, default: `'auto'`): `'auto'` | `'frame'` | `'sec'`.
+
+## `img_to_maneuver`
+Reconstructs `data` from the 16-bit PNG space/time maps produced by `maneuver_imgplot`. Normalization is extracted from the filenames automatically (manual override possible).
+
+### Parameters
+- `space_img_path`(str) / `time_img_path`(str): Paths to the PNG maps.
+- `space_set`(float, optional): Manual spatial normalization range.
+- `vrange`(tuple, optional): Manual time range `(vmin, vmax)`.
+
+### Usage
+```python
+bm.img_to_maneuver("xxx_space_1920.png", "xxx_time_840-2760.png")
+bm.transprocess()
+```
+
+## `img_to_maneuver_rate_based`
+Reconstructs `data` by integrating a rate-map image (playback-speed variation) over time — for a workflow where you paint the rate directly.
+
+### Parameters
+- `time_rate_path`(str): Rate-map PNG.
+- `space_img_path`(str, optional): Space map. None = auto-generate sequential values.
+- `space_set`(float, optional): Spatial normalization range.
+- `start_time`(float, optional, default: `0.0`): Integration start time.
+- `rate_range`(float, optional): Rate normalization range. None = extracted from the filename.
+- `rate_baseline`(float, optional) / `rate_startpoint`(float, optional): Rate baseline adjustments.
+
+## `movement_intensity_analyze`
+Measures motion intensity from inter-frame differences of the input video and saves a time-series graph as PNG — source material for designing motion-adaptive playback speed. No parameters.
 
 ## `transprocess`
 This method performs video rendering.
@@ -1000,14 +1824,14 @@ This method performs video rendering.
 ### Usage
 ```python
 # Create an instance
-your_maneuver = imgtrans.drawManeuver("mov/samplevideo.mp4",sd=1)
+bm = imgtrans.drawManeuver("mov/samplevideo.mp4",sd=1)
 
 # Write maneuver data
-your_maneuver.addTrans(100)
-your_maneuver.applyTimeForward(1)
+bm.addTrans(100)
+bm.applyTimeForward(1)
 
 # Rendering
-your_maneuver.transprocess()
+bm.transprocess()
 ```
 ## `new_transprocess`
 Primary video rendering method with HDR support, FFmpeg/PyAV pipeline, and rendering downscale options. Replaces `transprocess` for most use cases.
@@ -1071,14 +1895,45 @@ bm.new_transprocess(render_clip_start=100, render_clip_end=500)
 > )
 > ```
 
+## `pretransprocess`
+Quickly renders a preview video with `data` thinned to `outnums` frames at 10 fps — for checking the maneuver before a full render. Aborts with an error message when the time coordinates are out of range.
+
+### Parameters
+- `outnums`(int, optional, default: `100`): Number of output frames (data is sampled evenly).
+- `xy_trans_out`(bool, optional, default: `False`): Rotate the output by 90 degrees.
+
+### Usage
+```python
+bm.addCycleTrans(1200)
+bm.pretransprocess(100)
+```
+
+## `overlay_tc_rate`
+Re-exports the rendered video (`out_videopath`) with timecode and playback rate overlaid. The screen is divided into `divisions` sections and the TC/rate of each section's center slit is displayed. Rate colors: yellow (+1), blue (-1), gray (0). Timecode format: `{sec}sec---{frac}f`.
+
+### Parameters
+- `output_suffix`(str, optional, default: `None`): Output filename suffix. None = `"_tc"` (`"_tc_textonly"` when text_only).
+- `divisions`(int, optional, default: `5`): Number of probe sections.
+- `hdr`(bool, optional, default: `None`): None = auto-detect from the input. True = H.265 10bit HDR, False = H.264 8bit SDR.
+- `text_nits`(int, optional, default: `203`): Overlay brightness in HDR (nit).
+- `text_only`(bool, optional, default: `False`): Discard the video and export text only as transparent ProRes 4444 (for AE compositing).
+- `font_scale`(float, optional) / `thickness`(int, optional): None = auto by resolution.
+- `font_scale_mult`(float, optional, default: `1.0`): Multiplier applied to the auto-computed values.
+
+### Usage
+```python
+bm.transprocess()
+bm.overlay_tc_rate(divisions=5)
+```
+
 ## `animationout`
 
 The `animationout` function plots the pixel color of the image on a 3D graph with reference to the output video data and outputs the result as an animation. It allows you to visualize the trajectory of the playback cross section based on spatio-temporal manipulations on the spatio-temporal cube. Unlike 'maveuver_2dplot' and 'maveuver_3dplot', this visualization is more intuitive in its correspondence with the input video data by mapping pixel colors.  
  Therefore, it can only be executed after rendering the video. If there is already video data to be exported, it is necessary to call the information in the instance variable 'out_videopath'.
  
  ```python
- your_maneuver.out_videopath = "mov/sample.mp4"
- your_maneucer.animationout()
+ bm.out_videopath = "mov/sample.mp4"
+ bm.animationout()
  ```
 
  ### argument 
@@ -1089,6 +1944,99 @@ The `animationout` function plots the pixel color of the image on a 3D graph wit
 
 ### Examples of Use 
 ![Alt text](images/20220106_RFS1459-4K_2023_0930_Vslit_interporationAset+IP2800(rootingA)_CustomeBlur300_CustomeBlur300_TimeLoop_timeSlide_zCenterArranged_img_3d-pixelMap.gif)
+
+## `animationout_custome`
+Customizable version of `animationout` with fine control over camera angle, aspect ratio, colors and vector display.
+
+### Parameters
+- `zRangeFix`(bool, optional, default: `False`): Fix the time axis to the full input range.
+- `out_framenums`(int, default: `100`) / `drawLineNum`(int, default: `250`) / `dpi`(int, default: `200`) / `out_fps`(int, default: `10`): As in `animationout`.
+- `aspect_ratio`(tuple, optional, default: `(16, 50, 9)`): XYZ aspect.
+- `elev`(float, default: `25`) / `azim`(float, default: `-40`): Camera elevation/azimuth.
+- `colormode`(str, optional, default: `'white'`): Background scheme.
+- `transparent`(bool, optional, default: `False`): Transparent background.
+- `gridplot`(bool, optional, default: `True`): Draw the grid.
+- `vectorplot`(bool, optional, default: `False`): Draw motion vectors (with `vector_def_frame`(int, default `120`), `velocity`(float, default `10`), `vector_color_amp`(float, default `1.0`)).
+- `s_frame`(int, optional, default: `0`): Start frame.
+
+### Usage
+```python
+bm.out_videopath = "rendered.mp4"
+bm.animationout_custome(elev=30, azim=-60, colormode='black')
+```
+
+## Standalone Functions
+
+Module-level functions that do not belong to the class. Call them directly after `import imgtrans`.
+
+### `export_segments`
+Splits the source video into segment group A (forward) and group B (hflip + reversed), overlaying frame numbers and timecode. Supports real-time speed correction for high-speed footage (subsampling by the `recfps`/`out_fps` ratio).
+
+- `video_path`(str): Source video path.
+- `out_dir`(str): Output directory (creates A/ and B/ subfolders).
+- `segment_sec`(float, default: `10`): Source seconds per segment.
+- `segment_count`(int, optional): Number of segments. None = whole video.
+- `out_fps`(float, default: `60`): Output fps.
+- `with_frame_num`(bool, default: `True`): Draw frame numbers.
+- `recfps`(float, default: `480`): Actual recording fps.
+- `export_only`(str, default: `"both"`): `"A"` | `"B"` | `"both"`.
+
+```python
+imgtrans.export_segments("src.mp4", "segments/", segment_sec=10, recfps=480)
+```
+
+### `rendered_npys_to_mov`
+Unified converter from npy data to a video. Accepts a folder of sep-*.npy files, a single npy, an in-memory array, or a one-npy-per-frame folder (`per_frame=True`), and outputs in any `out_type` format.
+
+- `out_dir`(str): Output directory.
+- `npys_path`(str, optional): npy folder or file.
+- `out_fps`(int, default: `30`) / `out_type`(int, optional): Output settings.
+- `sep_start`(int, default: `0`) / `sep_end`(int, optional): Range of sep files to join.
+- `images`(ndarray, optional): Pass an in-memory array directly.
+- `per_frame`(bool, default: `False`): One-npy-per-frame layout.
+- `separate_out`(bool, default: `False`): Output one video per sep instead.
+
+```python
+imgtrans.rendered_npys_to_mov("out/", npys_path="tmp/", sep_start=1, sep_end=6)
+```
+
+### `rearrange_wide_video`
+Splits a wide panorama video (W×H) at the center and stacks the halves vertically into (W//2)×(2H). `roll_offset` applies a horizontal circular shift. Input is a video file or a sep-*.npy folder.
+
+- `output_path`(str): Output path.
+- `input_path`(str, optional) / `npys_path`(str, optional): Input (either one).
+- `roll_offset`(int, default: `0`): Horizontal circular shift in pixels.
+- `sep_start`/`sep_end`(int, optional): Range for npy input.
+- `out_fps`(int, default: `30`) / `out_type`(int, optional): Output settings.
+
+### `rendered_mov_to_seq`
+Extracts frames from a rendered video as still images (ffmpeg-based, HDR-color aware).
+
+- `video_path`(str): Input video.
+- `divide_num`(int, optional): Even division count.
+- `img_format`(str, default: `'jpg'`): `'ultrahdr'` (Gain Map HDR JPEG) | `'png'` (16-bit) | `'jpg'` | `'avif'` (10-bit) | `'npy'`.
+- `frame_array`(array, optional): Explicit frame numbers to export.
+- `color_mode`(str, default: `'source'`): `'source'` (keep color metadata) | `'sdr'` (tonemap to BT.709) | `'hlg'`.
+
+```python
+imgtrans.rendered_mov_to_seq("out.mp4", divide_num=10, img_format='png')
+```
+
+### `convert_npy_to_jpg`
+Converts a single npy file (a saved frame array) into a JPEG image. Params: `npy_file_path`(str), `output_folder`(str).
+
+### `custom_blur`
+Applies a weighted-average blur to the given frame range and dimension of an array and returns it. The internal implementation of `applyCustomeBlur`. Params: `data`(ndarray), `s_frame`(int), `e_frame`(int), `bl_time`(int), `dim_num`(int, default: `1`).
+
+### `custom_onedimention_blur`
+Weighted-average blur over a range of a 1-D array (e.g. a time trajectory). Params: `time_array`(ndarray), `s_frame`(int), `e_frame`(int), `bl_time`(int).
+
+### `double_first_dimension_with_interpolation`
+Doubles the first (frame) dimension of a 3-D array by inserting linearly interpolated frames between existing ones — usable for frame-rate doubling of maneuver data. Params: `arr`(ndarray), `next_first_array`(ndarray, optional: pass the next head frame for loops).
+
+```python
+bm.data = imgtrans.double_first_dimension_with_interpolation(bm.data)
+```
 
 ## Recent Updates (2026)
 
