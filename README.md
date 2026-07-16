@@ -571,6 +571,24 @@ Main parameters:
 - `grain_dur` / `grain_rate`: grain length [sec] and trigger rate [Hz] for grain mode
 - `jump_thresh_sec`: threshold [sec] for detecting discontinuous jumps in the trajectory. Jumps are split into segments and cross-faded to prevent clicks
 
+**Sound modulation by the frame-internal time depth (now depth):**
+The time span contained within one output frame (`max(z)-min(z)`) is normalized into a 0..1 control signal d(t) that can drive the following effects (combinable). This is the Python-native version of the idea in the legacy `scd_out` Rev variants, which applied now_depth to reverb. Flat cross-sections (normal frames) stay dry; the deeper the section folds into time, the stronger the effect.
+
+- `depth_reverb`(bool): wet level of a Schroeder reverb follows d(t). `reverb_wet` (max wet, default 0.4), `reverb_time` (RT60 sec, default 2.5), `reverb_predelay` (sec, default 0.048), `reverb_dry_duck` (0-1, ducks the dry level at depth)
+- `depth_lpf`(bool): cutoff of a 12dB/oct lowpass follows d(t). `lpf_range=(Hz at d=0, Hz at d=1)` (default (18000, 600), log interpolation)
+- `depth_width`(bool): stereo width (M/S) follows d(t). `width_range=(at d=0, at d=1)` (default (1.0, 1.8))
+- `depth_detune`(bool): wet level of a detune/chorus follows d(t). `detune_cents` (max detune, default 18), `detune_rate` (LFO Hz, default 0.15)
+- `grain_dur_range=(min sec, max sec)`: in grain mode, the grain length follows d(t) (deeper = longer smear). Takes precedence over `grain_dur`
+- `depth_range`(float): normalization ceiling of d(t) in seconds. None = normalized by the maximum over all frames
+
+```python
+# Example: deeper folds get more reverb, darker and wider
+bm.audio_video_out(mode="grain",
+                   depth_reverb=True, reverb_wet=0.6,
+                   depth_lpf=True, depth_width=True,
+                   grain_dur_range=(0.05, 0.3))
+```
+
 ##### Integrated audio+video output: audio_video_out
 Call this after rendering the video with `transprocess` etc.; it renders the audio and muxes it into the video in one step, producing a **video with audio**. The video stream is copied without re-encoding, so there is no quality loss (audio: PCM 24bit for .mov, AAC 320k for .mp4).
 

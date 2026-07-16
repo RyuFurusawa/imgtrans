@@ -31,6 +31,7 @@ import subprocess
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.io import wavfile
+from scipy.signal import lfilter
 
 
 class AudioMixin:
@@ -229,13 +230,128 @@ class AudioMixin:
         return base
 
     # ------------------------------------------------------------------
+    # フレーム内在時間 (now depth) 駆動の音響変調
+    # ------------------------------------------------------------------
+    # 出力1フレーム内に内在する入力映像の時間幅 (max(z)-min(z)) を 0..1 の
+    # 制御信号としてオーディオレートへ展開し、各種エフェクトの深さを駆動する。
+    # 旧 scd_out の Rev 版が now_depth をリバーブ (comb dtime / allpass gain /
+    # dry mix) に適用していた発想の Python 内完結版。
+
+    def _depth_signal(self, n_out, sr, depth_range=None, smooth_sec=0.25):
+        """フレーム内在時間の 0..1 制御信号をオーディオレートで返す。
+
+        depth_range: 正規化上限 [秒]。None なら全フレーム中の最大値で正規化。
+        smooth_sec : ジッパーノイズ防止の平滑化時間 [秒]。
+        """
+        F = self.data.shape[0]
+        z = self.data[:, :, 1]
+        depth_sec = (np.nanmax(z, axis=1) - np.nanmin(z, axis=1)) / self.recfps
+        ref = float(depth_range) if depth_range else float(np.max(depth_sec))
+        if ref <= 0:
+            return np.zeros(n_out)
+        d = np.clip(depth_sec / ref, 0.0, 1.0)
+        # フレームレート段階で平滑化してから補間 (計算コスト対策)
+        k = max(int(smooth_sec * self.outfps), 1)
+        if k > 1:
+            pad = np.pad(d, (k, k), mode='edge')
+            c = np.cumsum(np.insert(pad, 0, 0.0))
+            d = (c[2 * k + 1:] - c[:F]) / (2 * k + 1)
+        t = np.arange(n_out) / sr * self.outfps
+        return np.interp(t, np.arange(F), d)
+
+    @staticmethod
+    def _fx_reverb(out, sr, d, wet=0.4, reverb_time=2.5, predelay=0.048,
+                   dry_duck=0.0):
+        """Schroeder型リバーブ (プリディレイ+並列comb+直列allpass)。
+        wet量が depth 信号 d(t) に追従する。旧SC Rev版のPython移植相当。"""
+        n = out.shape[1]
+        pd = int(predelay * sr)
+        x = np.zeros_like(out)
+        if pd < n:
+            x[:, pd:] = out[:, :n - pd]
+        comb_ms = [29.7, 37.1, 41.1, 43.7, 31.3, 33.5, 39.1, 44.9]
+        rev = np.zeros_like(out)
+        for ch in range(2):
+            acc = np.zeros(n)
+            for ms in comb_ms:
+                D = max(int(ms / 1000 * sr * (1.0 + 0.007 * ch)), 2)
+                g = 10 ** (-3 * (D / sr) / max(reverb_time, 1e-3))
+                a = np.zeros(D + 1); a[0] = 1.0; a[D] = -g
+                acc += lfilter([1.0], a, x[ch])
+            acc /= len(comb_ms)
+            for ms, g in ((5.0, 0.7), (1.7, 0.7), (12.3, 0.65), (9.3, 0.6)):
+                D = max(int(ms / 1000 * sr), 2)
+                b = np.zeros(D + 1); b[0] = -g; b[D] = 1.0
+                a = np.zeros(D + 1); a[0] = 1.0; a[D] = -g
+                acc = lfilter(b, a, acc)
+            rev[ch] = acc
+        dry_gain = 1.0 - dry_duck * d
+        return out * dry_gain + rev * (wet * d)
+
+    @staticmethod
+    def _fx_lpf(out, sr, d, lpf_range=(18000.0, 600.0), block=1024):
+        """時変ローパス (ワンポール2段 ≈ 12dB/oct)。カットオフが depth に追従 (対数補間)。"""
+        n = out.shape[1]
+        f0, f1 = lpf_range
+        y = np.empty_like(out)
+        zi = [[np.zeros(1), np.zeros(1)], [np.zeros(1), np.zeros(1)]]
+        for s in range(0, n, block):
+            e = min(s + block, n)
+            dm = float(np.mean(d[s:e]))
+            fc = np.clip(f0 * (f1 / f0) ** dm, 20.0, sr / 2 * 0.99)
+            a = 1.0 - math.exp(-2 * math.pi * fc / sr)
+            for ch in range(2):
+                tmp, zi[0][ch] = lfilter([a], [1.0, a - 1.0],
+                                         out[ch, s:e], zi=zi[0][ch])
+                y[ch, s:e], zi[1][ch] = lfilter([a], [1.0, a - 1.0],
+                                                tmp, zi=zi[1][ch])
+        return y
+
+    @staticmethod
+    def _fx_width(out, d, width_range=(1.0, 1.8)):
+        """M/S処理によるステレオ幅の変調。depth が深いほど広がる。"""
+        w0, w1 = width_range
+        w = w0 + (w1 - w0) * d
+        mid = (out[0] + out[1]) * 0.5
+        side = (out[0] - out[1]) * 0.5 * w
+        return np.stack([mid + side, mid - side])
+
+    @staticmethod
+    def _fx_detune(out, sr, d, cents=18.0, rate=0.15):
+        """LFO変調ディレイによるデチューン/コーラス。wet量が depth に追従。"""
+        n = out.shape[1]
+        ratio_dev = 2 ** (cents / 1200.0) - 1.0
+        A = ratio_dev / (2 * math.pi * rate)  # 遅延変調振幅 [秒]
+        base = 0.020 + A
+        t = np.arange(n) / sr
+        idx = np.arange(n, dtype=np.float64)
+        wet = 0.7 * d
+        res = out.copy()
+        for vi, ph in enumerate((0.0, math.pi / 2)):
+            delay = base + A * np.sin(2 * math.pi * rate * t + ph)
+            rp = np.clip(idx - delay * sr, 0, n - 1.000001)
+            i0 = rp.astype(np.int64)
+            fr = rp - i0
+            for ch in range(2):
+                v = out[ch, i0] * (1 - fr) + out[ch, i0 + 1] * fr
+                g = wet * (0.5 if ch == vi else 0.35)
+                res[ch] += v * g
+        return res
+
+    # ------------------------------------------------------------------
     # Python 内オフラインレンダリング (SuperCollider 不要)
     # ------------------------------------------------------------------
     def audio_render(self, thread_num=20, audio_path=None, mode="play",
                      smooth="fourier", n_harmonics=None, sr=48000,
                      grain_dur=0.1, grain_rate=None, inpan_mode="balance",
                      jump_thresh_sec=0.25, fade_sec=0.01, normalize=True,
-                     out_name=None):
+                     out_name=None,
+                     depth_reverb=False, reverb_wet=0.4, reverb_time=2.5,
+                     reverb_predelay=0.048, reverb_dry_duck=0.0,
+                     depth_lpf=False, lpf_range=(18000.0, 600.0),
+                     depth_width=False, width_range=(1.0, 1.8),
+                     depth_detune=False, detune_cents=18.0, detune_rate=0.15,
+                     grain_dur_range=None, depth_range=None):
         """Maneuver Data を音声に適用してステレオ WAV を書き出す。
 
         mode:
@@ -254,6 +370,22 @@ class AudioMixin:
           "none"    : inPan を使わずボイス位置の固定パンのみ
         jump_thresh_sec : この値 [秒] を超える軌跡の飛びを不連続点として
                           セグメント分割し、クロスフェードでクリックを防ぐ
+
+        ==== フレーム内在時間 (now depth) による音響変調 ====
+        出力1フレーム内に内在する入力映像の時間幅を 0..1 に正規化した
+        制御信号 d(t) で、以下のエフェクトの深さを駆動できる (併用可)。
+        depth_reverb : True でリバーブの wet 量が d(t) に追従 (旧SC Rev版相当)。
+                       reverb_wet (最大wet), reverb_time (RT60秒),
+                       reverb_predelay, reverb_dry_duck (深部でdryを下げる率0-1)
+        depth_lpf    : True でローパスのカットオフが d(t) に追従。
+                       lpf_range=(d=0時のHz, d=1時のHz) 対数補間
+        depth_width  : True でステレオ幅(M/S)が d(t) に追従。
+                       width_range=(d=0時, d=1時)
+        depth_detune : True でデチューン/コーラスの wet 量が d(t) に追従。
+                       detune_cents (最大デチューン量), detune_rate (LFO Hz)
+        grain_dur_range : grainモード時、粒の長さ[秒]を (d=0時, d=1時) で
+                          depth に追従させる。指定時は grain_dur より優先
+        depth_range  : d(t) の正規化上限 [秒]。None なら最大値で正規化
         """
         print(sys._getframe().f_code.co_name)
         audio_path = self._resolve_audio_path(audio_path)
@@ -268,13 +400,25 @@ class AudioMixin:
             grain_rate = float(self.outfps)
         fade_n = max(int(fade_sec * sr), 8)
 
+        # depth 制御信号 (必要な場合のみ計算)
+        use_grain_depth = (grain_dur_range is not None and mode == "grain")
+        d_sig = None
+        if depth_reverb or depth_lpf or depth_width or depth_detune or use_grain_depth:
+            d_sig = self._depth_signal(n_out, sr, depth_range)
+            print(f"depth signal: max={d_sig.max():.3f} mean={d_sig.mean():.3f}")
+        dur_samples = None
+        if use_grain_depth:
+            g0, g1 = grain_dur_range
+            dur_samples = (g0 + (g1 - g0) * d_sig) * sr
+
         for v in range(n_voices):
             pos_sec, seg_edges = self._upsample_traj(
                 traj_sec[:, v], sr, smooth, n_harmonics, jump_thresh_sec)
             pos = pos_sec * sr  # ソース内サンプル位置
 
             if mode == "grain":
-                sig = self._render_grain(src, pos, sr, grain_dur, grain_rate)
+                sig = self._render_grain(src, pos, sr, grain_dur, grain_rate,
+                                         dur_samples=dur_samples)
             else:
                 sig = self._render_play(src, pos)
 
@@ -309,6 +453,25 @@ class AudioMixin:
                     out[1] += sig[1] * np.sin(p * np.pi / 2) * amp
             print(f"voice {v + 1}/{n_voices} rendered")
 
+        # ==== depth 駆動エフェクトチェーン (変調系 → 空間系 → リバーブ) ====
+        fx_attr = ""
+        if d_sig is not None:
+            if depth_detune:
+                out = self._fx_detune(out, sr, d_sig, detune_cents, detune_rate)
+                fx_attr += "-dDet"
+            if depth_lpf:
+                out = self._fx_lpf(out, sr, d_sig, lpf_range)
+                fx_attr += "-dLPF"
+            if depth_width:
+                out = self._fx_width(out, d_sig, width_range)
+                fx_attr += "-dWid"
+            if depth_reverb:
+                out = self._fx_reverb(out, sr, d_sig, reverb_wet, reverb_time,
+                                      reverb_predelay, reverb_dry_duck)
+                fx_attr += "-dRev"
+            if use_grain_depth:
+                fx_attr += "-dGrain"
+
         if normalize:
             peak = np.max(np.abs(out))
             if peak > 0:
@@ -316,7 +479,7 @@ class AudioMixin:
 
         base = out_name if out_name else self._audio_out_basename()
         harm_attr = f"-h{n_harmonics}" if n_harmonics else ""
-        fname = f"{base}_PyAudio-{mode}-{smooth}{harm_attr}-{n_voices}voices.wav"
+        fname = f"{base}_PyAudio-{mode}-{smooth}{harm_attr}{fx_attr}-{n_voices}voices.wav"
         wavfile.write(fname, sr, out.T.astype(np.float32))
         print("audio_render out:", fname)
         return fname
@@ -337,25 +500,42 @@ class AudioMixin:
         return sig
 
     @staticmethod
-    def _render_grain(src, pos, sr, grain_dur, grain_rate):
-        """位置駆動のグラニュラー合成 (ピッチ保存)。"""
+    def _render_grain(src, pos, sr, grain_dur, grain_rate, dur_samples=None):
+        """位置駆動のグラニュラー合成 (ピッチ保存)。
+
+        dur_samples: サンプルごとの目標粒長[サンプル]の配列 (depth 変調用)。
+                     None なら grain_dur 固定。窓和(OLA)で正規化するため
+                     粒長が変化しても音量は一定に保たれる。
+        """
         n_src = src.shape[1]
         n_out = len(pos)
-        gl = max(int(grain_dur * sr), 32)
-        win = np.hanning(gl)
         hop = sr / grain_rate
-        sig = np.zeros((2, n_out + gl), dtype=np.float64)
-        # 窓の重なりによるゲイン補正
-        overlap = gl / hop
-        norm = 1.0 / max(overlap * 0.5, 1.0)
+        if dur_samples is not None:
+            max_gl = max(int(np.max(dur_samples)) + 32, 64)
+        else:
+            max_gl = max(int(grain_dur * sr), 32)
+        sig = np.zeros((2, n_out + max_gl), dtype=np.float64)
+        wsum = np.zeros(n_out + max_gl, dtype=np.float64)
+        win_cache = {}
         t = 0.0
         while t < n_out:
             s = int(t)
+            if dur_samples is not None:
+                gl = int(dur_samples[s])
+            else:
+                gl = int(grain_dur * sr)
+            gl = max((gl // 32) * 32, 32)  # 窓キャッシュのため32単位に量子化
+            win = win_cache.get(gl)
+            if win is None:
+                win = np.hanning(gl)
+                win_cache[gl] = win
             p0 = int(pos[s])
             if 0 <= p0 <= n_src - gl:
                 sig[:, s:s + gl] += src[:, p0:p0 + gl] * win
+                wsum[s:s + gl] += win
             t += hop
-        return sig[:, :n_out] * norm
+        env = np.maximum(wsum[:n_out], 1e-3)
+        return sig[:, :n_out] / env
 
     # ------------------------------------------------------------------
     # 音声つき映像の統合書き出し (Python 内で完結)
@@ -370,7 +550,10 @@ class AudioMixin:
                          audio_render() をここで実行する
         audio_kwargs   : audio_render に渡す引数
                          (mode="play"/"grain", smooth, n_harmonics,
-                          inpan_mode, audio_path など)
+                          inpan_mode, audio_path のほか、depth_reverb /
+                          depth_lpf / depth_width / depth_detune /
+                          grain_dur_range などのフレーム内在時間による
+                          音響変調パラメータもここから指定できる)
 
         映像ストリームは再エンコードせずコピーするため画質劣化はない。
         音声は .mov には PCM 24bit、それ以外 (.mp4 等) には AAC 320k で載せる。
