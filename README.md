@@ -600,7 +600,11 @@ bm.audio_video_out(thread_num=20, mode="grain")    # render audio + mux in one c
 
 - `videopath`: video to mux with (default: the most recently rendered `out_videopath`)
 - `rendered_audio`: reuse an already rendered WAV (if None, `audio_render` is executed internally)
+- `name_attr`: arbitrary text appended to the output video filename
 - All other arguments are passed through to `audio_render`
+
+The output filename automatically gets a tag describing the audio processing (mode + enabled depth effects), which makes A/B comparison of multiple patterns easy.
+E.g. `xxx_wAudio-play.mp4` / `xxx_wAudio-grain-dRev-dLPF_take1.mp4`
 
 ##### Improved SuperCollider output: scd_out_v2
 For real-time / live use, use the improved SuperCollider export. Instead of the legacy CSV + 30Hz control loop, it writes the interpolated playback positions and balance information as a multi-channel float32 WAV (control track), and the SC side plays back position-driven via `BufRd`. Click noise and the re-synchronization drift of periodic maneuvers are eliminated.

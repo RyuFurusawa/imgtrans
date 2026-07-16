@@ -552,7 +552,11 @@ bm.audio_video_out(thread_num=20, mode="grain")    # 音声レンダリング + 
 
 - `videopath`: 結合する映像を明示指定（デフォルトは直近にレンダリングした `out_videopath`）
 - `rendered_audio`: レンダリング済みWAVを再利用する場合に指定（Noneなら内部で `audio_render` を実行）
+- `name_attr`: 出力映像ファイル名に付け加える任意のテキスト
 - その他の引数はそのまま `audio_render` に渡されます
+
+出力ファイル名には音響処理の内容タグ（mode + 有効なdepthエフェクト）が自動で付与されるため、複数パターンの聴き比べが容易です。
+例: `xxx_wAudio-play.mp4` / `xxx_wAudio-grain-dRev-dLPF_take1.mp4`
 
 ##### SuperCollider改良版出力 scd_out_v2
 リアルタイム処理・ライブ用途には SuperCollider 用の改良版出力を使います。旧 `scd_out` の CSV + 30Hz 制御ループの代わりに、補間済みの再生位置とバランス情報を多チャンネル float32 WAV（コントロールトラック）として書き出し、SC側は `BufRd` による位置駆動で再生します。クリックノイズ・周期軌道の再同期ずれが解消されています。

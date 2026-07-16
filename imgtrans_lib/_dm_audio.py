@@ -540,20 +540,44 @@ class AudioMixin:
     # ------------------------------------------------------------------
     # 音声つき映像の統合書き出し (Python 内で完結)
     # ------------------------------------------------------------------
+    @staticmethod
+    def _audio_fx_tag(mode="play", smooth="fourier", depth_reverb=False,
+                      depth_lpf=False, depth_width=False, depth_detune=False,
+                      grain_dur_range=None, **_):
+        """音響処理の設定内容からファイル名用のタグ文字列を生成する。"""
+        tag = mode
+        if depth_reverb:
+            tag += "-dRev"
+        if depth_lpf:
+            tag += "-dLPF"
+        if depth_width:
+            tag += "-dWid"
+        if depth_detune:
+            tag += "-dDet"
+        if grain_dur_range is not None and mode == "grain":
+            tag += "-dGrain"
+        return tag
+
     def audio_video_out(self, thread_num=20, videopath=None, rendered_audio=None,
-                        **audio_kwargs):
+                        name_attr=None, **audio_kwargs):
         """レンダリング済み映像と音声を統合し、音声つき映像として書き出す。
 
         videopath      : 結合する映像。None なら直近にレンダリングした
                          self.out_videopath (transprocess 系の出力) を使う
         rendered_audio : レンダリング済み音声 WAV のパス。None なら
                          audio_render() をここで実行する
+        name_attr      : 出力映像ファイル名に付け加える任意のテキスト。
+                         (例: name_attr="take2" → xxx_wAudio-grain-dRev_take2.mp4)
         audio_kwargs   : audio_render に渡す引数
                          (mode="play"/"grain", smooth, n_harmonics,
                           inpan_mode, audio_path のほか、depth_reverb /
                           depth_lpf / depth_width / depth_detune /
                           grain_dur_range などのフレーム内在時間による
                           音響変調パラメータもここから指定できる)
+
+        出力ファイル名には音響処理の内容タグ (mode + 有効な depth エフェクト)
+        が自動で付与されるため、複数パターンの聴き比べがしやすい。
+        例: xxx_wAudio-play.mp4 / xxx_wAudio-grain-dRev-dLPF.mp4
 
         映像ストリームは再エンコードせずコピーするため画質劣化はない。
         音声は .mov には PCM 24bit、それ以外 (.mp4 等) には AAC 320k で載せる。
@@ -565,11 +589,17 @@ class AudioMixin:
             raise ValueError(
                 "結合する映像が見つかりません。transprocess 等で映像を書き出してから"
                 "呼ぶか、videopath を指定してください。")
+        fx_tag = self._audio_fx_tag(**audio_kwargs) if rendered_audio is None else None
         if rendered_audio is None:
             rendered_audio = self.audio_render(thread_num=thread_num, **audio_kwargs)
 
         base, ext = os.path.splitext(videopath)
-        out_path = base + "_wAudio" + ext
+        suffix = "_wAudio"
+        if fx_tag:
+            suffix += "-" + fx_tag
+        if name_attr:
+            suffix += "_" + str(name_attr)
+        out_path = base + suffix + ext
         if ext.lower() == ".mov":
             acodec = ["-c:a", "pcm_s24le"]
         else:
