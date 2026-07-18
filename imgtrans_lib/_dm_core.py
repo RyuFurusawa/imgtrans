@@ -293,6 +293,7 @@ class CoreMixin:
         self.input_primaries   = None
         self.input_transfer    = None
         self.input_colorspace  = None
+        self.input_rotation    = 0   # Display Matrix 回転角 (iPhone縦位置撮影 = -90 等)
         self.is_morethan_8bit  = False #HDRの場合およそ2.6倍の時間がかかる。
         self.force_hdr_mode = None  # ← 入力に従う（HLGならHLG, PQならPQ）
         # self.force_hdr_mode = "hlg" # ← 強制的にHLG出力
@@ -335,7 +336,7 @@ class CoreMixin:
             cmd = [
                 "ffprobe", "-v", "error",
                 "-select_streams", "v:0",
-                "-show_entries", "stream=pix_fmt,color_primaries,color_transfer,colorspace",
+                "-show_entries", "stream=pix_fmt,color_primaries,color_transfer,colorspace:stream_side_data_list",
                 "-of", "json",
                 self.VIDEO_PATH
             ]
@@ -347,6 +348,14 @@ class CoreMixin:
             self.input_primaries  = st.get("color_primaries")
             self.input_transfer   = st.get("color_transfer")
             self.input_colorspace = st.get("colorspace")
+
+            # Display Matrix の回転角 (縦位置撮影のスマホ動画等)。
+            # OpenCV は自動適用するが PyAV は適用しないため、PyAV デコード時に
+            # frame_to_ndarray(rotation=...) で同じ向きに揃える必要がある。
+            for sd in st.get("side_data_list") or []:
+                if sd.get("rotation") is not None:
+                    self.input_rotation = int(sd["rotation"])
+                    break
 
             # ビット深度推定（例: yuv420p10le → 10 / rgb48le → 16）
             bit_depth = 8

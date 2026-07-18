@@ -21,7 +21,7 @@ import av
 
 from .hdr_io import oetf_from_scene_linear
 
-from ._utils import append_to_logfile
+from ._utils import append_to_logfile, frame_to_ndarray
 
 
 class RenderingMixin:
@@ -56,11 +56,8 @@ class RenderingMixin:
         # ============================================================
         # Phase 1: バリデーション
         # ============================================================
-        if self.input_pix_fmt == 'yuv420p10le' and out_type != 0:
-            msg = "Error! yuv420p10le is not supported for video output."
-            print(msg)
-            append_to_logfile(msg)
-            return
+        # yuv420p10le は以前 PyAV の rgb48le 変換バグで色が壊れたため拒否していたが、
+        # 現在は frame_to_ndarray() が 422p10le 経由で正しく変換するため許可
 
         if self.cap is not None and self.cap.get(cv2.CAP_PROP_FRAME_COUNT) < 1:
             print("capの映像データが外れている。再読み込みします。")
@@ -515,10 +512,8 @@ class RenderingMixin:
         eff_width  = int(self.width)  // slit_step
         if slit_step > 1 or scan_step > 1:
             print(f"slit_step={slit_step}, scan_step={scan_step}: output reduced (slit: {int(self.height)}→{eff_height} / {int(self.width)}→{eff_width}, scan_nums: {self.data.shape[1]}→{self.data.shape[1]//scan_step})")
-        if self.input_pix_fmt == 'yuv420p10le' and out_type != 0:
-            print("Error! The yuv420p10le video format is not supported for video output (out_type != 0). If the format is yuv444 or yuv422, it should be possible. Please convert the video data format and try loading it again.")
-            append_to_logfile("Error! The yuv420p10le video format is not supported for video output.")
-            return
+        # yuv420p10le は以前 PyAV の rgb48le 変換バグで色が壊れたため拒否していたが、
+        # 現在は frame_to_ndarray() が 422p10le 経由で正しく変換するため許可
 
         if self.cap is not None and self.cap.get(cv2.CAP_PROP_FRAME_COUNT) < 1 :
             print(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) == 0.0)
@@ -627,6 +622,8 @@ class RenderingMixin:
             and _hdr_mode_matches
             and out_type != 0
             and self.container is not None  # PyAVが必要
+            # 回転メタデータ付き入力は RGB 経由で回転を適用する必要がある
+            and getattr(self, "input_rotation", 0) == 0
         )
         if use_yuv_native:
             print("🎨 YUV-native pipeline: ON (RGB変換スキップ、色精度最大)")
@@ -943,7 +940,8 @@ class RenderingMixin:
                                             continue
                                         # print("ffmpeg streamline")
 
-                                        img = frame.to_ndarray(format=pyav_fmt)
+                                        img = frame_to_ndarray(frame, pyav_fmt,
+                                                               rotation=getattr(self, "input_rotation", 0))
 
                                         processed = self._process_frame(
                                             img,
@@ -1226,6 +1224,9 @@ class RenderingMixin:
 
                                 if use_yuv_native:
                                     # === YUV-native: プレーン直接取得（RGB変換なし） ===
+                                    # 420系入力は chroma が半分の高さなので 422p10le に揃える
+                                    if frame.format.name != "yuv422p10le":
+                                        frame = frame.reformat(format="yuv422p10le")
                                     y_plane  = np.frombuffer(frame.planes[0], dtype=np.uint16).reshape(
                                         frame.planes[0].height, frame.planes[0].line_size // 2)[:, :frame.width]
                                     cb_plane = np.frombuffer(frame.planes[1], dtype=np.uint16).reshape(
@@ -1242,7 +1243,8 @@ class RenderingMixin:
                                         slit_step=slit_step,
                                     )
                                 else:
-                                    img = frame.to_ndarray(format=pyav_fmt)
+                                    img = frame_to_ndarray(frame, pyav_fmt,
+                                                           rotation=getattr(self, "input_rotation", 0))
                                     processed = self._process_frame(
                                         img,
                                         frame_index,
@@ -1713,7 +1715,9 @@ class RenderingMixin:
         input_path = self.out_videopath
 
         if hdr is None:
-            hdr = getattr(self, "is_morethan_8bit", False)
+            # 10bit でも bt709 (SDR) 入力は HDR 扱いしない
+            hdr = (getattr(self, "is_morethan_8bit", False)
+                   and getattr(self, "input_transfer", None) in ("smpte2084", "arib-std-b67"))
 
         cap = cv2.VideoCapture(input_path)
         fps = cap.get(cv2.CAP_PROP_FPS)

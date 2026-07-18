@@ -13,6 +13,7 @@ import gc
 import cv2
 import numpy as np
 
+from ._utils import frame_to_ndarray
 from ._jit_kernels import (
     _HAS_NUMBA,
     _process_frame_vertical_jit,
@@ -297,7 +298,8 @@ class FrameProcMixin:
                     break
                 if idx not in needed_frames:
                     continue
-                yield idx, frame.to_ndarray(format=pyav_fmt)
+                yield idx, frame_to_ndarray(frame, pyav_fmt,
+                                            rotation=getattr(self, "input_rotation", 0))
                 needed_frames.discard(idx)
                 if not needed_frames:
                     break

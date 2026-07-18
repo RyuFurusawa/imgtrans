@@ -10,6 +10,28 @@ import cv2
 import numpy as np
 
 
+# swscale は 420系サブサンプリング高bit深度 (yuv420p10le 等) → rgb48le の
+# 直接変換で誤った色を返すバグがあるため (PyAV 15.x / FFmpeg 7 で確認)、
+# 422p10le を経由して変換する。8bit (rgb24) への変換は直接でも正しい。
+_BROKEN_420_HIGHBIT = {"yuv420p10le", "yuv420p12le", "yuv420p16le", "p010le", "p016le"}
+
+
+def frame_to_ndarray(frame, fmt, rotation=0):
+    """PyAV VideoFrame → ndarray。420系10bitソースの rgb48le 変換バグを回避する。
+
+    rotation: 入力ストリームの Display Matrix 回転角 (ffprobe の rotation 値)。
+    PyAV は OpenCV と違い回転メタデータを適用しないため、ここで適用して
+    OpenCV パスと同じ向き (縦長動画は縦長のまま) に揃える。
+    -90 → 時計回り90°、90 → 反時計回り90°、180 → 180°。"""
+    if fmt == "rgb48le" and frame.format.name in _BROKEN_420_HIGHBIT:
+        frame = frame.reformat(format="yuv422p10le")
+    arr = frame.to_ndarray(format=fmt)
+    k = int(rotation / 90) % 4
+    if k:
+        arr = np.ascontiguousarray(np.rot90(arr, k=int(rotation / 90)))
+    return arr
+
+
 def split_list_based_on_elements(original_list, k):
     total_elements = sum([len(sublist) for sublist in original_list])
     average_elements = total_elements / k

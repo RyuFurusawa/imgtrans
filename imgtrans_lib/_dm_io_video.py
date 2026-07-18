@@ -14,6 +14,24 @@ import numpy as np
 
 
 class IOVideoMixin:
+    def _resolve_out_color_meta(self):
+        """出力の (color_primaries, color_trc, colorspace) を決定する。
+        force_hdr_mode 指定があればそれに従い、None の場合は入力に追従する。
+        入力が bt709 (SDR 10bit 含む) の場合は bt709 のまま維持し、
+        HDR (PQ/HLG) として誤タグ付けしない。
+        transfer 不明の 10bit 入力は従来通り PQ とみなす。"""
+        if self.force_hdr_mode == "hlg":
+            return "bt2020", "arib-std-b67", "bt2020nc"
+        if self.force_hdr_mode == "pq":
+            return "bt2020", "smpte2084", "bt2020nc"
+        in_trc = getattr(self, "input_transfer", None)
+        if in_trc == "arib-std-b67":
+            return "bt2020", "arib-std-b67", "bt2020nc"
+        if in_trc == "bt709":
+            # SDR (8bit / 10bit bt709) → bt709 を維持
+            return "bt709", "bt709", "bt709"
+        return "bt2020", "smpte2084", "bt2020nc"
+
     def _build_ffmpeg_cmd(self, out_path: str, width: int, height: int, fps: float, out_type: int, use_yuv_native: bool = False):
         """
         出力タイプに応じて ffmpeg の Popen コマンド配列を作る。
@@ -41,23 +59,15 @@ class IOVideoMixin:
         elif out_type == self.OUT_H265:
             enc = self._ENCODERS[self.OUT_H265]
 
-            # HDRトランスファーを入力側にも明示（RGB→YUV変換マトリクスに影響）
-            if self.force_hdr_mode == "hlg":
-                in_trc = "arib-std-b67"
-            elif self.force_hdr_mode == "pq":
-                in_trc = "smpte2084"
-            else:
-                if getattr(self, "input_transfer", None) == "arib-std-b67":
-                    in_trc = "arib-std-b67"
-                else:
-                    in_trc = "smpte2084"
+            # 出力色メタデータ（SDR bt709 入力は bt709 のまま維持）
+            out_pri, out_trc, out_mat = self._resolve_out_color_meta()
 
             cmd += [
                 "-f", "rawvideo",
                 "-pix_fmt", "rgb48le",          # stdinは16bit
-                "-color_primaries", "bt2020",    # 入力RGBの色域を明示
-                "-color_trc", in_trc,            # 入力RGBのトランスファーを明示
-                "-colorspace", "bt2020nc",       # 入力RGBの変換マトリクスを明示
+                "-color_primaries", out_pri,     # 入力RGBの色域を明示
+                "-color_trc", out_trc,           # 入力RGBのトランスファーを明示
+                "-colorspace", out_mat,          # 入力RGBの変換マトリクスを明示
                 "-s:v", f"{width}x{height}",
                 "-r", str(fps),
                 "-i", "-",                      # stdin← ここまでが「入力側」の設定
@@ -65,13 +75,9 @@ class IOVideoMixin:
                 "-pix_fmt", enc["pix_fmt"],  # 出力はyuv420p10le#← ここからが「出力側」の設定
                 "-tag:v", enc["tagv"],
             ]
-            # if self.is_morethan_8bit:
-            #     cmd +=["-pix_fmt", enc["pix_fmt"],]  # 出力はyuv420p10le
-            # else :
-            #     cmd +=["-pix_fmt", "rgb24",]  # stdinは16bit
-        
-            # === HDRトランスファーの切り替え ===
-            if self.force_hdr_mode == "hlg":
+
+            # === トランスファー別の x265 パラメータ ===
+            if out_trc == "arib-std-b67":
                 cmd += [
                     "-x265-params",
                     (
@@ -79,26 +85,16 @@ class IOVideoMixin:
                         "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc"
                     ),
                 ]
-            elif self.force_hdr_mode == "pq":
+            elif out_trc == "smpte2084":
                 cmd += [
                     "-x265-params",
                     enc["x265_params"]  # 既存のPQ用パラメータをそのまま利用
                 ]
             else:
-                # 入力に従う
-                if getattr(self, "input_transfer", None) == "arib-std-b67":
-                    cmd += [
+                # SDR bt709 (10bit のまま、HDRメタデータなし)
+                cmd += [
                     "-x265-params",
-                    (
-                        "hdr-opt=1:repeat-headers=1:"
-                        "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc"
-                    ),
-                ]
-                else:
-                    cmd += [
-                    # "-color_range", "tv",#HDR系 (PQ/HLG) は 基本的に TVレンジ前提
-                    "-x265-params",
-                    enc["x265_params"]  # 既存のPQ用パラメータをそのまま利用
+                    "repeat-headers=1:hdr-opt=0:colorprim=bt709:transfer=bt709:colormatrix=bt709",
                 ]
 
             cmd.append(out_path)
@@ -106,23 +102,15 @@ class IOVideoMixin:
         elif out_type in (self.OUT_PRORES_422, self.OUT_PRORES_4444):
             enc = self._ENCODERS[out_type]
 
-            # HDRトランスファーを先に決定
-            if self.force_hdr_mode == "hlg":
-                trc = "arib-std-b67"
-            elif self.force_hdr_mode == "pq":
-                trc = "smpte2084"
-            else:
-                if getattr(self, "input_transfer", None) == "arib-std-b67":
-                    trc = "arib-std-b67"
-                else:
-                    trc = "smpte2084"
+            # 出力色メタデータ（SDR bt709 入力は bt709 のまま維持）
+            out_pri, trc, out_mat = self._resolve_out_color_meta()
 
             # prores_ks は -color_primaries/-color_trc を colr atom に書かない。
             # まず一時ファイルにエンコード → remux で colr を後付けする。
             self._prores_colr = {
-                "primaries": "bt2020",
+                "primaries": out_pri,
                 "trc": trc,
-                "space": "bt2020nc",
+                "space": out_mat,
                 "range": "tv",
             }
             if use_yuv_native:
@@ -132,18 +120,18 @@ class IOVideoMixin:
                     "-pix_fmt", "yuv422p10le",       # YUVプレーンを直接入力
                     "-s:v", f"{width}x{height}",
                     "-r", str(fps),
-                    "-color_primaries", "bt2020",
+                    "-color_primaries", out_pri,
                     "-color_trc", trc,
-                    "-colorspace", "bt2020nc",
+                    "-colorspace", out_mat,
                     "-color_range", "tv",
                     "-i", "-",
                     "-c:v", enc["codec"],
                     "-pix_fmt", enc["pix_fmt"],
                     "-profile:v", enc["profile"],
                     "-vendor", "apl0",
-                    "-color_primaries", "bt2020",
+                    "-color_primaries", out_pri,
                     "-color_trc", trc,
-                    "-colorspace", "bt2020nc",
+                    "-colorspace", out_mat,
                     "-color_range", "tv",
                     out_path,
                 ]
@@ -151,9 +139,9 @@ class IOVideoMixin:
                 cmd += [
                     "-f", "rawvideo",
                     "-pix_fmt", "rgb48le",
-                    "-color_primaries", "bt2020",    # 入力RGBの色域を明示
+                    "-color_primaries", out_pri,     # 入力RGBの色域を明示
                     "-color_trc", trc,               # 入力RGBのトランスファーを明示
-                    "-colorspace", "bt2020nc",       # 入力RGBの変換マトリクスを明示
+                    "-colorspace", out_mat,          # 入力RGBの変換マトリクスを明示
                     "-s:v", f"{width}x{height}",
                     "-r", str(fps),
                     "-i", "-",
@@ -161,9 +149,9 @@ class IOVideoMixin:
                     "-pix_fmt", enc["pix_fmt"],
                     "-profile:v", enc["profile"],
                     "-vendor", "apl0",
-                    "-color_primaries", "bt2020",    # 出力メタデータ
+                    "-color_primaries", out_pri,     # 出力メタデータ
                     "-color_trc", trc,               # 出力メタデータ
-                    "-colorspace", "bt2020nc",
+                    "-colorspace", out_mat,
                     "-color_range", "tv",
                     out_path,
                 ]
@@ -210,20 +198,15 @@ class IOVideoMixin:
                 "-pix_fmt", enc["pix_fmt"],      # p010le (10bit)
                 "-profile:v", enc["profile"],    # main10
                 "-tag:v", enc["tagv"],           # hvc1
-                "-color_primaries", "bt2020",
-                "-colorspace", "bt2020nc",
             ]
 
-            # === HDRトランスファーの切り替え ===
-            if self.force_hdr_mode == "hlg":
-                cmd += ["-color_trc", "arib-std-b67"]
-            elif self.force_hdr_mode == "pq":
-                cmd += ["-color_trc", "smpte2084"]
-            else:
-                if getattr(self, "input_transfer", None) == "arib-std-b67":
-                    cmd += ["-color_trc", "arib-std-b67"]
-                else:
-                    cmd += ["-color_trc", "smpte2084"]
+            # 出力色メタデータ（SDR bt709 入力は bt709 のまま維持）
+            out_pri, out_trc, out_mat = self._resolve_out_color_meta()
+            cmd += [
+                "-color_primaries", out_pri,
+                "-colorspace", out_mat,
+                "-color_trc", out_trc,
+            ]
 
             cmd += [out_path]
 

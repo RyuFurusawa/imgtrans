@@ -52,6 +52,10 @@ def open_hdr_reader(path, pix_fmt_out="rgb48le"):
     container = av.open(path)
     vstream = container.streams.video[0]
     for frame in container.decode(vstream):
+        # swscale の 420系10bit → rgb48le 直接変換バグ回避 (422p10le 経由)
+        if pix_fmt_out == "rgb48le" and frame.format.name in (
+                "yuv420p10le", "yuv420p12le", "yuv420p16le", "p010le", "p016le"):
+            frame = frame.reformat(format="yuv422p10le")
         arr = frame.to_ndarray(format=pix_fmt_out)  # (H,W,3) uint16
         yield arr
 
