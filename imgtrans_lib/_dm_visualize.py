@@ -701,6 +701,19 @@ class VisualizeMixin:
 
             fig.set_size_inches(w_inc, h_inc)
             plt.tight_layout()
+            # 時間軸 (x) のデータ領域が PNG 内のどの水平割合にあるかを記録する。
+            # GUI 側が再生位置インディケーター (赤線) の可動範囲合わせに使う。
+            # (tight_layout 後の axes 位置 + 軸マージンを含む xlim から算出)
+            try:
+                _pos = ax1.get_position()
+                _xl = ax1.get_xlim()
+                _span = max(1e-9, _xl[1] - _xl[0])
+                self.plot2d_time_axis_frac = (
+                    float(_pos.x0 + _pos.width * ((s_frame - _xl[0]) / _span)),
+                    float(_pos.x0 + _pos.width * ((e_frame - 1 - _xl[0]) / _span)),
+                )
+            except Exception:
+                self.plot2d_time_axis_frac = None
             if x_positions or y_positions:
                 plt.savefig(self.ORG_NAME + "_" + self.out_name_attr + '_' + str(j) + 'thread-renderSep'+ attr + "-"+str(w_inc)+"x"+str(h_inc)+"("+str(axnum)+').png', dpi=300, transparent=True)
             else:
@@ -864,7 +877,11 @@ class VisualizeMixin:
         plt.clf()
         plt.close('all')
 
-    def maneuver_3dplot(self, thread_num=None, thread_through=False, zRangeFix=False, out_framenums=50, out_fps=25, colormode='white',line_width=1,aspect_ratio=(1, 1, 1),elev=25, azim=-40, dpi=200,xticks=False,zticks=False,yticks_normal=True,only_seq_img=False,only_seq_img_num=None,lineplot=True,vectorplot=False,gridplot=True,vector_def_frame=120,velocity=10,vector_color_amp=1.0,s_frame=0,zRangeMin=None,zRangeMax=None,zRangeFollow=False,zRangeFollow_margin=0.2):
+    def maneuver_3dplot(self, thread_num=None, thread_through=False, zRangeFix=False, out_framenums=50, out_fps=25, colormode='white',line_width=1,aspect_ratio=(1, 1, 1),elev=25, azim=-40, dpi=200,xticks=False,zticks=False,yticks_normal=True,only_seq_img=False,only_seq_img_num=None,lineplot=True,vectorplot=False,gridplot=True,vector_def_frame=120,velocity=10,vector_color_amp=1.0,s_frame=0,zRangeMin=None,zRangeMax=None,zRangeFollow=False,zRangeFollow_margin=0.2,fig_w_inc=None,fig_h_inc=None,box_aspect=None):
+        # fig_w_inc / fig_h_inc: 図サイズ (インチ)。None なら matplotlib 既定。
+        # box_aspect: 3D ボックスの (x, y, z) 比率を固定する。None なら従来の
+        #             動作 (データレンジに応じた動的な y ストレッチ)。
+        #             GUI 等で表示領域のアスペクト比に合わせたいときに使う。
         print(sys._getframe().f_code.co_name)
         if thread_through == False:
                 if thread_num != None:
@@ -927,6 +944,8 @@ class VisualizeMixin:
 
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         # ax.view_init(elev=25, azim=-40)  # 3D視点設定
+        if fig_w_inc and fig_h_inc:
+            fig.set_size_inches(float(fig_w_inc), float(fig_h_inc))
 
         if colormode == 'black':
             bg_color = (0, 0, 0)
@@ -997,18 +1016,24 @@ class VisualizeMixin:
                 span = max(zMax - zMin, 1e-6)
                 pad = span * zRangeFollow_margin
                 ax.set_ylim(zMin - pad, zMax + pad)
-                ax.set_box_aspect(aspect_ratio)
+                ax.set_box_aspect(box_aspect if box_aspect is not None else aspect_ratio)
             elif zRangeFix:
                 ylimmin=allzMin if zRangeMin == None else zRangeMin
                 ylimmax=allzMax if zRangeMax == None else zRangeMax
                 ax.set_ylim(ylimmin, ylimmax) # z軸固定
+                if box_aspect is not None:
+                    ax.set_box_aspect(box_aspect)
             else:
                 # y軸の表示範囲を設定
                 y_range_min = min(zMin, zMax - 5760)
                 y_range_max = max(zMax, zMin + 5760)
                 y_range=y_range_max-y_range_min
                 ax.set_ylim(y_range_min, y_range_max)
-                ax.set_box_aspect((aspect_ratio[0],np.clip(int(aspect_ratio[1]*(y_range / 11520)),aspect_ratio[1],aspect_ratio[0]*10),aspect_ratio[2]))
+                if box_aspect is not None:
+                    # 表示領域フィット: 呼び出し側が指定した固定比率を優先する
+                    ax.set_box_aspect(box_aspect)
+                else:
+                    ax.set_box_aspect((aspect_ratio[0],np.clip(int(aspect_ratio[1]*(y_range / 11520)),aspect_ratio[1],aspect_ratio[0]*10),aspect_ratio[2]))
 
             ax.set_xlim(xMin, xMax)  # x軸固定
             ax.set_zlim(0, yMax) 
