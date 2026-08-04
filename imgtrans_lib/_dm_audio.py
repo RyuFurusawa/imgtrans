@@ -345,7 +345,7 @@ class AudioMixin:
                      smooth="fourier", n_harmonics=None, sr=48000,
                      grain_dur=0.1, grain_rate=None, inpan_mode="balance",
                      jump_thresh_sec=0.25, fade_sec=0.01, normalize=True,
-                     out_name=None,
+                     gain=1.0, out_name=None,
                      depth_reverb=False, reverb_wet=0.4, reverb_time=2.5,
                      reverb_predelay=0.048, reverb_dry_duck=0.0,
                      depth_lpf=False, lpf_range=(18000.0, 600.0),
@@ -476,6 +476,8 @@ class AudioMixin:
             peak = np.max(np.abs(out))
             if peak > 0:
                 out *= 0.891 / peak  # -1 dBFS
+        if gain != 1.0:
+            out *= float(gain)      # マスター音量 (normalize 後に適用)
 
         base = out_name if out_name else self._audio_out_basename()
         harm_attr = f"-h{n_harmonics}" if n_harmonics else ""
