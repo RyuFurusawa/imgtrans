@@ -6,6 +6,8 @@
 import os
 import sys
 import glob
+import json
+import subprocess
 import cv2
 import numpy as np
 
@@ -30,6 +32,32 @@ def frame_to_ndarray(frame, fmt, rotation=0):
     if k:
         arr = np.ascontiguousarray(np.rot90(arr, k=int(rotation / 90)))
     return arr
+
+
+_ROTATION_CACHE = {}
+
+
+def probe_video_rotation(path):
+    """動画の Display Matrix 回転角を ffprobe で取得する (無ければ 0)。
+    fpsプロキシは物理回転済み (メタデータ無し=0)、オリジナルは回転メタ付きの場合が
+    あるため、複数fpsレンダリングのソース切替時にはソース毎の回転角が必要になる。"""
+    path = str(path)
+    if path in _ROTATION_CACHE:
+        return _ROTATION_CACHE[path]
+    rot = 0
+    try:
+        out = subprocess.check_output([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream_side_data_list", "-of", "json", path])
+        info = json.loads(out.decode("utf-8", errors="ignore"))
+        for sd in (info.get("streams") or [{}])[0].get("side_data_list") or []:
+            if sd.get("rotation") is not None:
+                rot = int(sd["rotation"])
+                break
+    except Exception:
+        pass
+    _ROTATION_CACHE[path] = rot
+    return rot
 
 
 def split_list_based_on_elements(original_list, k):

@@ -21,7 +21,7 @@ import av
 
 from .hdr_io import oetf_from_scene_linear
 
-from ._utils import append_to_logfile, frame_to_ndarray
+from ._utils import append_to_logfile, frame_to_ndarray, probe_video_rotation, returnfps
 
 
 class RenderingMixin:
@@ -166,6 +166,7 @@ class RenderingMixin:
         else:
             self.cap = cv2.VideoCapture(self.VIDEO_PATH)
             self.container = None
+        self._active_rotation = getattr(self, "input_rotation", 0)
 
         # ============================================================
         # Phase 6: メインループ（セグメント単位）
@@ -257,6 +258,8 @@ class RenderingMixin:
                         print(f"sel fps={fps}")
                         # ソース映像を切り替え
                         fps_idx = self.some_recfps_array.index(fps)
+                        # ソース毎に回転メタデータが異なる (プロキシは物理回転済み=0) ため更新
+                        self._active_rotation = probe_video_rotation(self.another_videos[fps_idx])
                         if self.is_morethan_8bit or use_pyav:
                             self.container = av.open(self.another_videos[fps_idx])
                             self.stream = self.container.streams.video[0]
@@ -503,7 +506,216 @@ class RenderingMixin:
         print(f"All Done {total_time}sec")
         append_to_logfile(f"All Done {total_time}sec")
 
-    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,xy_trans_out=False,render_mode=0,title_atr:str=None,title_replace:str=None,tmp_para_images=False,del_data=True,auto_memory_clear=False,memory_report=False,tmp_save = False,render_clip_start=0,render_clip_end=None,tmp_path_base = None,slit_step=1,scan_step=1,use_pyav=False):
+    def _generate_fps_proxy(self, src_path, dst_path, target_fps=None):
+        """ffmpeg でプロキシを1本生成する。VideoToolbox HW → 失敗時 libx265/libx264。
+        target_fps=None なら fps 変換なし (420→422 のフォーマット変換のみ)。
+        10bit 系は 422 (p210le/yuv422p10le) で出力する。420 10bit のままだと
+        読み込み時の swscale バグ回避 (422 reformat) で毎フレーム余分なコストが
+        かかるため、プロキシ自体を 422 にしておく方が速い。
+        デフォルトの autorotate で回転メタデータは物理回転に変換される (プロキシは回転メタ無し)。"""
+        color_args = []
+        for flag, val in (("-color_primaries", getattr(self, "input_primaries", None)),
+                          ("-color_trc", getattr(self, "input_transfer", None)),
+                          ("-colorspace", getattr(self, "input_colorspace", None))):
+            if val and val != "unknown":
+                color_args += [flag, val]
+        base = ["ffmpeg", "-y", "-loglevel", "error", "-stats", "-i", src_path]
+        if target_fps is not None:
+            base += ["-vf", f"fps={target_fps}"]
+        base += ["-an"]
+        if self.is_morethan_8bit:
+            hw = base + ["-c:v", "hevc_videotoolbox", "-q:v", "60",
+                         "-pix_fmt", "p210le",
+                         "-tag:v", "hvc1"] + color_args + [dst_path]
+            sw = base + ["-c:v", "libx265", "-preset", "ultrafast", "-crf", "16",
+                         "-pix_fmt", "yuv422p10le", "-tag:v", "hvc1"] + color_args + [dst_path]
+        else:
+            hw = base + ["-c:v", "hevc_videotoolbox", "-q:v", "60",
+                         "-tag:v", "hvc1"] + color_args + [dst_path]
+            sw = base + ["-c:v", "libx264", "-preset", "ultrafast",
+                         "-crf", "16"] + color_args + [dst_path]
+        for cmd in (hw, sw):
+            print("auto_fps_proxy CMD:", " ".join(cmd))
+            if subprocess.run(cmd).returncode == 0 and os.path.isfile(dst_path):
+                return True
+            try:
+                os.remove(dst_path)
+            except OSError:
+                pass
+        return False
+
+    def _prepare_fps_proxies(self, render_clip_start=0, render_clip_end=None,
+                             max_proxies=2, min_read_frames=5000,
+                             min_saving_ratio=0.7, gen_speed_ratio=2.0):
+        """読み込みフレーム数が多い場合、入力動画の低fps版プロキシを自動生成して
+        複数fpsレンダリング (another_fps_dir 相当) に切り替える。
+
+        - another_fps_dir 指定済み (self.another_videos あり) の場合は何もしない
+        - プロキシはソース動画と同じ階層の <name>_fpsproxy/ に生成し、次回以降は再利用
+        - コスト見積もりは簡易 (フレーム数換算)。厳密に制御したい場合は従来通り
+          another_fps_dir で事前準備した動画群を渡す
+        戻り値: プロキシレンダリングへ切り替えた場合 True
+        """
+        if len(self.another_videos) > 0:
+            return False
+        try:
+            if render_clip_end is None:
+                render_clip_end = self.data.shape[0]
+            scan_nums = self.data.shape[1]
+            z_seg = self.data[render_clip_start:render_clip_end, :, 1]
+            if z_seg.shape[0] == 0:
+                return False
+            # 出力フレーム毎の z 幅 (=そのフレームが必要とする読み込み量) と
+            # 使える最大縮小段 e (スリット間隔 nd/scan_nums フレームおきの読み込みで足りる)
+            nd = np.abs(z_seg.max(axis=1) - z_seg.min(axis=1))
+            e_arr = np.clip(np.floor(np.log2(np.maximum(nd / scan_nums, 1))).astype(int), 0, 4)
+
+            # 同じ e が連続する区間 (run) 単位で読み込み量 = z 範囲の union とみなす
+            spans, run_e = [], []
+            start = 0
+            for i in range(1, len(e_arr) + 1):
+                if i == len(e_arr) or e_arr[i] != e_arr[start]:
+                    zc = z_seg[start:i]
+                    spans.append(float(zc.max() - zc.min()) + 1.0)
+                    run_e.append(int(e_arr[start]))
+                    start = i
+            spans = np.array(spans)
+            run_e = np.array(run_e)
+            work_orig = float(spans.sum())
+            if work_orig < min_read_frames:
+                return False
+
+            def total_work(exps):
+                scale = np.ones(len(spans))
+                for e in sorted(exps):
+                    scale = np.where(run_e >= e, 0.5 ** e, scale)
+                return float((spans * scale).sum())
+
+            # 貪欲選択: プロキシ1本の生成コスト ≈ 全フレームデコード / gen_speed_ratio
+            gen_cost = float(self.count) / gen_speed_ratio
+            chosen = []
+            w_cur = work_orig
+            for _ in range(max_proxies):
+                best = None
+                for e in range(1, 5):
+                    if e in chosen:
+                        continue
+                    w = total_work(chosen + [e])
+                    gain = w_cur - w - gen_cost
+                    if gain > 0 and (best is None or gain > best[1]):
+                        best = (e, gain, w)
+                if best is None:
+                    break
+                chosen.append(best[0])
+                w_cur = best[2]
+            work_new = w_cur + gen_cost * len(chosen)
+            if chosen and work_new > work_orig * min_saving_ratio:
+                chosen = []  # プロキシの割は合わないが、下の422変換は別途検討する
+                work_new = work_orig
+
+            # === フルfps 422変換の判断 (420系10bit入力のみ) ===
+            # 420 10bit は読み込み時の swscale バグ回避で毎フレーム約1.6倍の変換
+            # コストがかかる (実測 26.7ms vs 16.4ms/f)。オリジナルから読む量が
+            # 多い場合は、fps はそのままの 422 変換版を作って差し替える方が速い。
+            from ._utils import _BROKEN_420_HIGHBIT
+            need_422 = False
+            if str(getattr(self, "input_pix_fmt", "")) in _BROKEN_420_HIGHBIT:
+                scale = np.ones(len(spans))
+                for e in sorted(chosen):
+                    scale = np.where(run_e >= e, 0.5 ** e, scale)
+                w_full = float((spans * (scale == 1.0)).sum())  # 原本から読む残り読み込み量
+                if w_full * 0.35 > gen_cost:   # 0.35 ≈ 422化で削れる時間の割合
+                    need_422 = True
+                    work_new += gen_cost - w_full * 0.35
+
+            if not chosen and not need_422:
+                return False
+
+            # デコード速度を軽く実測して時間の目安をログ表示
+            t_dec = None
+            try:
+                bt = time.time()
+                n = 0
+                bc = av.open(self.VIDEO_PATH)
+                for _f in bc.decode(bc.streams.video[0]):
+                    n += 1
+                    if n >= 12:
+                        break
+                bc.close()
+                t_dec = (time.time() - bt) / max(n, 1)
+            except Exception:
+                pass
+            proxy_fps_list = [self.recfps / (2 ** e) for e in sorted(chosen)]
+            msg = (f"auto_fps_proxy: 読み込み {int(work_orig)}f → 実効 {int(work_new)}f"
+                   f" ({work_new / work_orig * 100:.0f}%)"
+                   f" proxy fps={[round(f_, 3) for f_ in proxy_fps_list]}"
+                   f" 422変換={need_422}")
+            if t_dec:
+                msg += (f" | 推定 {work_orig * t_dec / 60:.1f}分"
+                        f" → {work_new * t_dec / 60:.1f}分 (プロキシ生成込み)")
+            print(msg)
+            append_to_logfile(msg)
+
+            # === プロキシ生成 (既存は再利用、低fps分は前段プロキシから連鎖生成) ===
+            proxy_dir = os.path.join(os.path.dirname(self.VIDEO_PATH),
+                                     self.ORG_NAME + "_fpsproxy")
+            os.makedirs(proxy_dir, exist_ok=True)
+            fmt_tag = "_422" if self.is_morethan_8bit else ""
+            src = self.VIDEO_PATH
+            proxy_paths = []
+            for pf in proxy_fps_list:
+                dst = os.path.join(proxy_dir, f"{self.ORG_NAME}_fps{pf:.6g}{fmt_tag}.mov")
+                if os.path.isfile(dst):
+                    print(f"auto_fps_proxy: 既存プロキシを再利用 {dst}")
+                else:
+                    gtime = time.time()
+                    if not self._generate_fps_proxy(src, dst, pf):
+                        print(f"auto_fps_proxy: 生成失敗のため中断 ({dst})")
+                        break
+                    print(f"auto_fps_proxy: 生成完了 {dst} ({time.time() - gtime:.1f}sec)")
+                proxy_paths.append(dst)
+                src = dst
+
+            # === フルfps 422変換版 (原本の差し替え) ===
+            base_video = self.VIDEO_PATH
+            if need_422:
+                dst = os.path.join(proxy_dir,
+                                   f"{self.ORG_NAME}_fps{self.recfps:.6g}_422.mov")
+                if os.path.isfile(dst):
+                    print(f"auto_fps_proxy: 既存422変換版を再利用 {dst}")
+                    base_video = dst
+                else:
+                    gtime = time.time()
+                    if self._generate_fps_proxy(self.VIDEO_PATH, dst, None):
+                        print(f"auto_fps_proxy: 422変換完了 {dst} ({time.time() - gtime:.1f}sec)")
+                        base_video = dst
+                    else:
+                        print(f"auto_fps_proxy: 422変換失敗、原本のまま続行 ({dst})")
+            if not proxy_paths and base_video == self.VIDEO_PATH:
+                return False
+
+            # === another_fps_dir 指定時と同じ形で複数fps用の配列をセットアップ ===
+            vids = proxy_paths + [base_video]
+            fps_list = returnfps(vids)
+            order = np.argsort(np.array(fps_list))
+            self.some_recfps_array = np.sort(np.array(fps_list)).tolist()
+            self.another_videos = np.array(vids)[order]
+            self.renderfps_scales = np.array(self.some_recfps_array) / self.recfps
+            print("auto_fps_proxy: another_videos=", self.another_videos)
+            print("auto_fps_proxy: renderfps_scales=", self.renderfps_scales)
+
+            # info_setting と同じ digitize で depth→使用fps 対応表を作成 (全域)
+            depth_all = np.abs(self.data[:, :, 1].max(axis=1) - self.data[:, :, 1].min(axis=1))
+            req_all = self.recfps / (np.clip(depth_all, 1, None) / scan_nums)
+            idxs = np.digitize(req_all, np.array(self.some_recfps_array), right=True)
+            idxs[idxs == len(self.some_recfps_array)] = len(self.some_recfps_array) - 1
+            self.depth_to_sel_recfps = np.array(self.some_recfps_array)[idxs]
+            return True
+        except Exception as e:
+            print("auto_fps_proxy: 見積もり/準備に失敗、通常レンダリングを続行:", e)
+            return False
+
+    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,xy_trans_out=False,render_mode=0,title_atr:str=None,title_replace:str=None,tmp_para_images=False,del_data=True,auto_memory_clear=False,memory_report=False,tmp_save = False,render_clip_start=0,render_clip_end=None,tmp_path_base = None,slit_step=1,scan_step=1,use_pyav=False,auto_fps_proxy=True):
         # slit_step: スリットレングス縮小 (1=等倍, 2=1/2, 3=1/3, 4=1/4)
         # scan_step: スキャンナムズ間引き (1=等倍, 2=1/2, 3=1/3, 4=1/4) — self.data非破壊
         if slit_step < 1: slit_step = 1
@@ -596,6 +808,12 @@ class RenderingMixin:
             if os.path.isdir("tmp")==False:
                 os.makedirs("tmp")
         
+        # === 低fpsプロキシ自動生成 ===
+        # 読み込みフレーム数が多い場合、低fps版を作ってから読んだ方が速ければ
+        # 自動でプロキシを生成し複数fpsレンダリングに切り替える
+        if auto_fps_proxy:
+            self._prepare_fps_proxies(render_clip_start, render_clip_end)
+
         # HDR 対応 / PyAV選択
         # is_morethan_8bit または use_pyav=True のとき PyAV を使う
         if self.is_morethan_8bit or use_pyav:
@@ -607,6 +825,7 @@ class RenderingMixin:
         else:
             self.cap = cv2.VideoCapture(self.VIDEO_PATH)
             self.container = None
+        self._active_rotation = getattr(self, "input_rotation", 0)
         # HDR 対応 / PyAV選択ここまで
 
         # === YUV-native パイプライン判定 ===
@@ -624,11 +843,33 @@ class RenderingMixin:
             and self.container is not None  # PyAVが必要
             # 回転メタデータ付き入力は RGB 経由で回転を適用する必要がある
             and getattr(self, "input_rotation", 0) == 0
+            # 複数fpsレンダリング時は RGB 経由のソース切替パスを使う
+            and len(self.depth_to_sel_recfps) == 0
         )
         if use_yuv_native:
             print("🎨 YUV-native pipeline: ON (RGB変換スキップ、色精度最大)")
         else:
             print("🎨 YUV-native pipeline: OFF (RGB経由)")
+
+        # === 単一シンクへのストリーミング判定 ===
+        # sepVideoOut==0 (既定) で複数セグメントの場合、従来は生データ全量を
+        # tmp/*.npy に退避してから結合していた (ディスクを数十〜百GB消費し、
+        # 空き容量が足りないと np.save が失速/失敗して止まる)。
+        # tmp を残す必要がない通常レンダリングでは、最初のセグメントでシンクを
+        # 開き、各セグメントを計算後すぐ書き込む (ディスク消費 = 最終動画のみ)。
+        stream_single = (
+            self.sepVideoOut == 0 and out_type != 0
+            and not tmp_save and not tmp_para_images
+            and render_mode in (0, 1)
+        )
+        if stream_single and separate_num > 1:
+            print(f"📼 streaming single-sink: ON "
+                  f"(tmp退避なしで {separate_num} セグメントを逐次書き込み)")
+        try:
+            _free_gb = shutil.disk_usage(".").free / 1e9
+            print(f"disk free: {_free_gb:.1f} GB")
+        except Exception:
+            pass
 
         if render_mode < 3 : #3の場合は、tmpの書き出しのみを行う。
             for s in range(sep_start_num,sep_end_num):
@@ -817,6 +1058,9 @@ class RenderingMixin:
                             # 配列内でvが続いているインデックスを見つける
                             print("sel fps=",fps)
                             # HDR 対応 / PyAV選択
+                            # ソース毎に回転メタデータが異なる (プロキシは物理回転済み=0) ため更新
+                            self._active_rotation = probe_video_rotation(
+                                self.another_videos[self.some_recfps_array.index(fps)])
                             if (self.is_morethan_8bit and out_type > 1) or use_pyav:
                                 self.container = av.open(self.another_videos[self.some_recfps_array.index(fps)])
                                 self.stream = self.container.streams.video[0]
@@ -941,7 +1185,8 @@ class RenderingMixin:
                                         # print("ffmpeg streamline")
 
                                         img = frame_to_ndarray(frame, pyav_fmt,
-                                                               rotation=getattr(self, "input_rotation", 0))
+                                                               rotation=getattr(self, "_active_rotation",
+                                                                                getattr(self, "input_rotation", 0)))
 
                                         processed = self._process_frame(
                                             img,
@@ -1244,7 +1489,8 @@ class RenderingMixin:
                                     )
                                 else:
                                     img = frame_to_ndarray(frame, pyav_fmt,
-                                                           rotation=getattr(self, "input_rotation", 0))
+                                                           rotation=getattr(self, "_active_rotation",
+                                                                            getattr(self, "input_rotation", 0)))
                                     processed = self._process_frame(
                                         img,
                                         frame_index,
@@ -1284,7 +1530,7 @@ class RenderingMixin:
                     sepVideoOut == 1 の場合は全フレームを出力。
                     カスタム設定の sep_end_num に到達した場合も確実に出力される。
                     '''
-                    if (out_type == 0) or (
+                    if (out_type == 0) or stream_single or (
                         (self.sepVideoOut != 0 or separate_num == 1) and (
                             self.sepVideoOut == 1 or
                             (self.sepVideoOut > 1 and (s-sep_start_num) % self.sepVideoOut == self.sepVideoOut - 1) or
@@ -1323,7 +1569,11 @@ class RenderingMixin:
 
                         w = int(wr_array.shape[1]) if self.scan_direction % 2 == 1 else eff_width
                         h = eff_height              if self.scan_direction % 2 == 1 else int(wr_array.shape[1])
-                        if (out_type != 0 and self.sepVideoOut <= 1) or (out_type != 0 and s % self.sepVideoOut == 0):
+                        _open_now = out_type != 0 and (
+                            (self.sepVideoOut <= 0 and s == sep_start_num) or
+                            self.sepVideoOut == 1 or
+                            (self.sepVideoOut > 1 and s % self.sepVideoOut == 0))
+                        if _open_now:
                             _sink_kind, _sink_obj = self._open_video_sink(self.out_videopath, w, h, self.outfps, out_type, use_yuv_native=use_yuv_native)
                         n_render_frames = img_y.shape[0] if use_yuv_native else images.shape[0]
                         for i in range(n_render_frames):
@@ -1371,8 +1621,11 @@ class RenderingMixin:
                                     suffix = f"({knterval:.02f})sec/f"
                                 )
 
-                        if out_type != 0 :
-                            # ブロック単位に限らず、必ず、クローズさせる
+                        if out_type != 0 and (self.sepVideoOut >= 1
+                                              or s == sep_end_num - 1):
+                            # sepVideoOut>=1: ブロック単位で必ずクローズ。
+                            # ストリーミング (sepVideoOut<=0): 最終セグメントで
+                            # だけクローズし、それまで同一シンクへ書き続ける。
                             self._close_video_sink(_sink_kind, _sink_obj)
                         print()
                     else :
@@ -1417,6 +1670,18 @@ class RenderingMixin:
                                 )
                         else :
                             print("tmp file Writing",round(Interval,2))
+                            # 空き容量チェック: 足りないまま np.save すると
+                            # ディスクを食い潰して失速/失敗するため先に止める
+                            _need = (img_y.nbytes + img_cb.nbytes + img_cr.nbytes) \
+                                if use_yuv_native else images.nbytes
+                            _free = shutil.disk_usage(".").free
+                            if _free < _need * 1.05:
+                                raise OSError(
+                                    f"ディスク空き容量不足: tmp 書き出しに約 "
+                                    f"{_need/1e9:.1f}GB 必要ですが空きは "
+                                    f"{_free/1e9:.1f}GB です。空き容量を確保するか "
+                                    f"tmp_save=False (既定) のストリーミング出力を"
+                                    f"使用してください。")
                             wstime = time.time()
                             tmp_name="tmp/"+videostr+"_sep-"+str(s)
                             if use_yuv_native:
@@ -1448,7 +1713,8 @@ class RenderingMixin:
                         writer.writerows(memory_stats)
                 gc.collect()
         if self.cap != None : self.cap.release()
-        if self.sepVideoOut == 0 and out_type != 0 and separate_num != 1 and render_mode != 2:
+        if self.sepVideoOut == 0 and out_type != 0 and separate_num != 1 \
+                and render_mode != 2 and not stream_single:
             print("video-preference")
             gc.collect()
             print(psutil.virtual_memory())

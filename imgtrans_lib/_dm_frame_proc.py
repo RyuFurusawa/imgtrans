@@ -299,7 +299,8 @@ class FrameProcMixin:
                 if idx not in needed_frames:
                     continue
                 yield idx, frame_to_ndarray(frame, pyav_fmt,
-                                            rotation=getattr(self, "input_rotation", 0))
+                                            rotation=getattr(self, "_active_rotation",
+                                                             getattr(self, "input_rotation", 0)))
                 needed_frames.discard(idx)
                 if not needed_frames:
                     break
