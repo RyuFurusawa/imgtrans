@@ -1436,19 +1436,19 @@ class TransformsAddMixin:
         if len(timevalues)==0:
             timevalues=[self.count,self.scan_nums,1,0]#左端から右端までの時間差（Frame）
             timepoints=[0,0.7,0.95,1]
-            if len(timecenter) != len(timevalues): timecenter=[0.5] * len(timevalues)
-        else : 
+        else :
             if timevalues[0] > self.count : timevalues[0] = self.count
-            #もし、timepoints が設定されていなければ、自動的に入力する
-            if len(timevalues)!=len(timevalues):
-                for i in range(0,len(timevalues)):timepoints.append(1/(len(timevalues)-1)*i)
-            if len(timecenter) == 0:
-                timecenter=np.full(len(timevalues), 0.5)
-            if len(connect_round) != len(timevalues):
-                if connect_round==[]:
-                    connect_round= np.full(len(timevalues),1)
-                else:
-                    connect_round= np.full(len(timevalues),connect_round)
+            #timepoints が未指定/長さ不一致なら等間隔で自動入力する
+            if len(timepoints)!=len(timevalues):
+                timepoints=[i/(len(timevalues)-1) for i in range(len(timevalues))]
+        # timecenter / connect_round は「未指定・int 指定・長さ不一致」を
+        # どの分岐でも許容する (README の connect_round=1 例が落ちるバグ修正)
+        if len(timecenter) != len(timevalues):
+            timecenter=np.full(len(timevalues), 0.5)
+        if np.isscalar(connect_round):
+            connect_round=np.full(len(timevalues), connect_round)
+        elif len(connect_round) != len(timevalues):
+            connect_round=np.full(len(timevalues), 1)
 
         wr_array=[]
         print("timevalues:",timevalues,"timepoints:",timepoints)
