@@ -18,6 +18,7 @@
         _dm_transforms_apply.py drawManeuver: applyTime*/applySpace*/apply*Blur
         _dm_transforms_add.py  drawManeuver: addTrans/addCycle/rooting*
         _dm_rendering.py       drawManeuver: transprocess / new_transprocess
+        _dm_surface.py         drawManeuver: surfaceTransprocess (サーフェスモード)
         _dm_visualize.py       drawManeuver: maneuver_2dplot/3dplot/animationout
 
 元の単一ファイル版は imgtrans2026_pre_modular_backup.py にバックアップしている。
