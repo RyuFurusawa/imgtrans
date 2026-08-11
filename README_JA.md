@@ -302,6 +302,66 @@ bm.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov（HDRアーカイブ推
 
 詳細は [`transprocess`](#transprocess)こちらを参照ください。
 
+#### サーフェスレンダリング（surfaceTransprocess）
+
+`transprocess` がスリット（1次元）単位で時間を走査するのに対し、`surfaceTransprocess` は **2次元 16bit グレースケールマップで画素ごとに参照時刻を指定**してレンダリングします。TimeFlowStudio (iOS) のサーフェスモードと同一の意味論で、iPhone で書き出したマップをデスクトップ側でフル解像度・高ビット深度で仕上げる用途を想定しています。
+
+マップの XY は入力映像と同じ座標系です（解像度が異なる場合は自動リサイズ）。`self.data`（軌道データ）は使いません。
+
+```python
+bm = imgtrans.drawManeuver(videopath, 1)
+
+# time 解釈: 明度 = 時間変位（AE Time Displacement 相当）
+bm.surfaceTransprocess("surface_map.png", interpretation="time",
+                       amplitude_sec=3.0, out_type=3)
+
+# rate 解釈: 明度 = 再生レート（黒=-1 逆再生 / 白=+1 順再生、各画素が独立した時計）
+bm.surfaceTransprocess("surface_map.png", interpretation="rate",
+                       rate_white=1.0, rate_black=-1.0,
+                       anchor=0.5, start_time=0.5, out_type=3)
+```
+
+主なオプション:
+
+| 引数 | 意味 |
+|---|---|
+| `interpretation` | `"time"`（時間変位）/ `"rate"`（画素ごとの再生レート） |
+| `out_frame_num` | 出力フレーム数（省略時: time=入力実尺 / rate=30秒 を outfps 換算） |
+| `amplitude_sec` | time: 時間変位量（秒） |
+| `rate_white` `rate_black` | rate: 白/黒の再生レート（既定 +1 / -1） |
+| `anchor` `start_time` | rate: 全画素が一致する出力位置と、その瞬間の入力位置（0..1） |
+| `wrap` | 範囲外時刻を `True`=ラップ（既定）/ `False`=クランプ |
+| `time_interp` | `"nearest"`（既定・高速）/ `"linear"`（2フレーム加重合成） |
+| `pixel_step` | 出力縮小（2=1/2 解像度）。時間実測・プレビュー用 |
+| `separate_num` `out_type` | `transprocess` と同じメモリ分割・出力タイプ |
+
+内部では出力フレームをセグメント分割し、全画素の参照フレームを基数ソートして「ソースフレーム → 書き込み先画素」の逆引きを構築し、ソース映像を 1 パス順次デコードしながら散布書き込みします。ラップにより参照が全域に散るため、読み込みコストは原理的に「セグメント数 × ソース全域デコード」となります（`separate_num` を小さくできるほど速い）。
+
+##### サーフェスモードの音声
+
+`surfaceTransprocess` の直後に `audio_render()` / `audio_video_out()` を呼ぶと、maneuver data の代わりに**サーフェスマップのグリッドセル（既定 7×5 = 35 ボイス）の平均明度から各ボイスの再生時刻**を作って音声化します。TimeFlowStudio の `GridAudio` と同じ意味論です。
+
+```python
+bm.surfaceTransprocess("surface_map.png", interpretation="rate", out_type=3)
+bm.audio_video_out(mode="grain", grain_dur=0.085, depth_reverb=True)
+```
+
+明度→時刻の変換はどのモードでもアフィンなので、「セル平均明度を代入した時刻＝セル内の平均時刻」が厳密に成り立ちます。アプリと合わせている点は次の通りです。
+
+- **グリッド縮約**: マップ本来の解像度に対して `reduceGrid` と同じ帯分割でセル平均を取る
+- **定位**: 列 → ステレオパン（等パワー）、行 → 定位に寄与しない
+- **リバーブ**: フレーム内のセル時刻の広がり（ラップを考慮した最小弧長）が深さを駆動する（`depth_reverb=True`）
+- **合成方式**: `mode="grain"` がアプリ既定のグラニュラー（ピッチ保存）、`mode="play"` がテープ式（レートでピッチが変わる）
+
+`thread_num` は無視され、ボイス数はグリッドのセル数になります。出力フレーム範囲は映像と共通なので、尺と同期は自動的に一致します。映像を作らず音声だけ欲しい場合は、マップとパラメータを直接渡せます。
+
+```python
+bm.audio_render(mode="grain", surface_map="surface_map.png",
+                surface_kwargs=dict(interpretation="rate", out_frame_num=900))
+```
+
+グリッド分割数は `bm.SURFACE_AUDIO_COLS` / `bm.SURFACE_AUDIO_ROWS`（既定 7 / 5）、または `setup_surface_audio(..., cols=, rows=)` で変更できます。
+
 #### カラーパイプライン（映像レンダリング時の色変換）
 
 映像レンダリングにおける色変換パイプラインの全体像です。HDR（PQ/HLG）コンテンツの BT.2020 色空間における色精度の維持に関わる重要な仕組みです。
@@ -524,28 +584,125 @@ bm.audio_render(thread_num=20, mode="grain")  # グラニュラー合成（ピ�
 - `jump_thresh_sec`: 軌跡の不連続ジャンプ検出しきい値[秒]。超えた箇所はセグメント分割しクロスフェードでクリックを防ぐ
 
 **フレーム内在時間（now depth）による音響変調:**
-出力1フレーム内に内在する入力映像の時間幅（`max(z)-min(z)`）を 0..1 の制御信号 d(t) に正規化し、以下のエフェクトの深さを駆動できます（併用可）。旧 `scd_out` の Rev 版が now_depth をリバーブに適用していた発想の Python 内完結版です。断面がフラット（通常フレーム）な瞬間はエフェクトがかからず、断面が時間方向へ深く折り畳まれるほど効果が強くなります。
 
-- `depth_reverb`(bool): リバーブ（Schroeder型）の wet 量が d(t) に追従。`reverb_wet`(最大wet, デフォルト0.4), `reverb_time`(RT60秒, デフォルト2.5), `reverb_predelay`(秒, デフォルト0.048), `reverb_dry_duck`(深部でdryを下げる率0-1)
-- `depth_lpf`(bool): ローパス（12dB/oct）のカットオフが d(t) に追従。`lpf_range=(d=0時Hz, d=1時Hz)`（デフォルト(18000, 600)、対数補間）
-- `depth_width`(bool): ステレオ幅（M/S）が d(t) に追従。`width_range=(d=0時, d=1時)`（デフォルト(1.0, 1.8)）
-- `depth_detune`(bool): デチューン/コーラスの wet 量が d(t) に追従。`detune_cents`(最大デチューン量, デフォルト18), `detune_rate`(LFO Hz, デフォルト0.15)
-- `grain_dur_range=(min秒, max秒)`: grainモード時、粒の長さが d(t) に追従（深いほど長く滲む）。指定時は `grain_dur` より優先
-- `depth_range`(float): d(t) の正規化上限[秒]。None なら全フレーム中の最大値で正規化
+###### 1. now depth とは何か
+
+出力される映像の1フレームは、必ずしも入力映像の「1瞬間」ではありません。
+`addCycleTrans` などで断面を傾けると、**画面の左端と右端で参照している入力時刻がずれます**。
+このズレ幅を「そのフレームが内側に抱えている時間の厚み」＝ **now depth** と呼んでいます。
+
+```
+そのフレームの now depth [秒] = ( max(z) − min(z) ) / recfps
+                                 ↑同一フレーム内のスリット間で、最も未来と最も過去の差
+```
+
+| 断面の状態 | now depth | 音への効果 |
+|---|---|---|
+| フラットな通常フレーム（全スリットが同じ時刻） | **0** | エフェクトがかからない（素の音） |
+| 断面が少し傾いている | 小 | わずかにかかる |
+| 断面が時間方向へ深く折り畳まれている | **大** | 効果が最大 |
+
+この値を **0〜1 に正規化した制御信号 d(t)** が、以下すべてのエフェクトの深さを駆動します。
+`depth_range`(秒) を指定するとその値を 1.0 とみなし、省略すると**その作品中の最大値**が 1.0 になります。
+急激な変化でジッパーノイズが出ないよう 0.25 秒で平滑化されています。
+
+つまり **「時間が厚く折り畳まれた瞬間ほど、音が遠く・暗く・広く・揺れる」**
+という対応づけを自動で作る仕組みです。映像の変形量に音が追従するため、
+手でオートメーションを書かなくても画と音が同期します。
+
+> 補足: サーフェスモードでは「画面内のセル時刻の広がり」を同じ意味で使います
+> （ループをまたぐ場合は近い方の弧長で測ります）。
+
+###### 2. 各エフェクトの意味とパラメータ
+
+**`depth_reverb` — リバーブ（空間の響き）**
+
+Schroeder 型（プリディレイ → 並列コムフィルタ8本 → 直列オールパス4段）。
+**wet 量（響きの混ざり具合）だけ**が d(t) に追従し、空間の性格そのものは固定です。
+
+| パラメータ | 既定 | 意味 |
+|---|---|---|
+| `reverb_wet` | 0.4 | d=1 のときの wet 量。0=無音、1=響きのみ。**効果の強さ** |
+| `reverb_room_size` | 1.0 | **空間の広さ**。コム遅延（29.7〜44.9ms）の倍率。0.3=小部屋 / 1.0=中ホール / 2.5=大聖堂。小さいほど反射が密で金属的、大きいほど反射間隔が伸びて広大になる |
+| `reverb_time` | 2.5 | **残響が減衰しきるまでの秒数**（RT60）。広さとは独立。広い空間でも吸音が強ければ短くなる |
+| `reverb_predelay` | 0.048 | 原音から最初の反射までの間[秒]。長いほど音源が手前・壁が遠い印象 |
+| `reverb_dry_duck` | 0.0 | d が大きいとき原音を下げる率(0〜1)。1.0 に近づけると深部で音が完全に遠のく |
+
+> **広さ（room_size）と残響時間（reverb_time）は別物**です。
+> 広さは「反射が返ってくる間隔」、残響時間は「消えるまでの長さ」。
+> 大きな石造りの空間 = room_size 大 + reverb_time 長、
+> 小さな浴室 = room_size 小 + reverb_time やや長、という組み合わせで作り分けます。
+
+**`depth_lpf` — ローパスフィルタ（音のこもり）**
+
+ワンポール2段（約 12dB/oct）。**カットオフ周波数**が d(t) に追従します。
+
+- `lpf_range=(d=0のHz, d=1のHz)` 既定 `(18000, 600)`
+- 対数補間なので聴感上なめらかに変化します
+- 既定では「フラットな断面 = 18kHz（ほぼ素通し）」→「深い断面 = 600Hz（水中のようにこもる）」
+- 逆向き `(600, 18000)` を指定すれば「深いほど明るくなる」も作れます
+
+**`depth_width` — ステレオ幅（広がり）**
+
+M/S 処理（Mid = L+R の成分、Side = L−R の成分）で Side 成分を増減します。
+
+- `width_range=(d=0のとき, d=1のとき)` 既定 `(1.0, 1.8)`
+- `1.0` = 原音のまま / `0.0` = 完全モノラル / `1.8` = 左右に強く広がる
+- 既定では「フラットな断面 = 通常のステレオ」→「深い断面 = 音場が左右へ開く」
+- `(1.0, 0.0)` にすると逆に「深いほど中央へ収束する」動きになります
+
+**`depth_detune` — デチューン / コーラス（音程の揺らぎ）**
+
+LFO で変調した短いディレイを2声重ね、原音とわずかにピッチのずれた音を混ぜます。
+**混ぜる量（wet）**が d(t) に追従します。
+
+- `detune_cents` 既定 18.0 — ピッチのずれ幅。100 セント = 半音。18 セントは「わずかなうねり」程度
+- `detune_rate` 既定 0.15 — 揺れの速さ[Hz]。0.15 = 約6.7秒で1往復のゆっくりした揺らぎ
+- 値を大きくすると（例 50 セント）明確に不安定な・酔うような響きになります
+
+**`grain_dur_range` — 粒の長さ（grain モード限定）**
+
+`grain_dur_range=(d=0のとき秒, d=1のとき秒)`。指定すると `grain_dur` より優先されます。
+既定の粒長は 0.1 秒。`(0.05, 0.3)` とすると
+「フラットな断面 = 粒が短くくっきり」→「深い断面 = 粒が長く滲む」という変化になります。
+
+###### 3. 組み合わせの例
 
 ```python
-# 例: 深く折り畳まれた断面ほどリバーブが深く・暗く・広くなる
+# ① 断面が深いほど「遠く・暗く」——奥行きの表現
 bm.audio_video_out(mode="grain",
                    depth_reverb=True, reverb_wet=0.6,
-                   depth_lpf=True, depth_width=True,
+                   reverb_room_size=2.0, reverb_time=4.0,   # 広く長い残響
+                   reverb_dry_duck=0.4,                     # 深部では原音を下げる
+                   depth_lpf=True, lpf_range=(18000, 500))
+
+# ② 小さな部屋の金属的な響き（広さを詰めて残響も短く）
+bm.audio_video_out(mode="play",
+                   depth_reverb=True, reverb_wet=0.5,
+                   reverb_room_size=0.3, reverb_time=1.2,
+                   reverb_predelay=0.010)
+
+# ③ 深いほど音場が開き、音程が揺らぐ
+bm.audio_video_out(mode="grain",
+                   depth_width=True, width_range=(1.0, 2.0),
+                   depth_detune=True, detune_cents=35, detune_rate=0.1,
                    grain_dur_range=(0.05, 0.3))
+
+# ④ 全部盛り（正規化上限を明示して作品間で効果量を揃える）
+bm.audio_video_out(mode="grain", depth_range=3.0,   # 3秒の厚みで d=1.0 とする
+                   depth_reverb=True, reverb_room_size=1.5,
+                   depth_lpf=True, depth_width=True, depth_detune=True,
+                   grain_dur_range=(0.06, 0.25))
 ```
+
+出力ファイル名には有効にしたエフェクトのタグが自動で付きます
+（例: `..._wAudio-grain-dRev-dLPF-dWid.mp4`）。聴き比べの際に取り違えません。
 
 ##### 音声つき映像の統合出力 audio_video_out
 `transprocess` 等で映像をレンダリングした後に呼ぶと、音声レンダリングと映像への結合（mux）までを一括で行い、**音声つき映像**を書き出します。映像ストリームは再エンコードせずコピーするため画質劣化はありません（音声は .mov には PCM 24bit、.mp4 には AAC 320k）。
 
 ```python
-bm.transprocess()                                  # 映像のレンダリング
+bm.transprocess(del_data=False)                                  # 映像のレンダリング
 bm.audio_video_out(thread_num=20, mode="grain")    # 音声レンダリング + 結合まで一括
 # → 直近の映像出力と同名の *_wAudio.mp4 (.mov) が生成される
 ```
@@ -557,6 +714,45 @@ bm.audio_video_out(thread_num=20, mode="grain")    # 音声レンダリング + 
 
 出力ファイル名には音響処理の内容タグ（mode + 有効なdepthエフェクト）が自動で付与されるため、複数パターンの聴き比べが容易です。
 例: `xxx_wAudio-play.mp4` / `xxx_wAudio-grain-dRev-dLPF_take1.mp4`
+
+###### 例: 映像を1回だけレンダリングして音声パターンを一括比較
+`audio_video_out` は映像ストリームをコピーで再利用するため、**映像レンダリングは1回だけ**行い、同じ映像に対して音響パラメータだけを変えた複数バージョンを次々に書き出せます。映像レンダリング時に `del_data=False` を指定して軌道データ（`data`）を保持しておくことで、各 `audio_video_out` 呼び出しが内部の `audio_render` でその軌道を音に再利用できます。各出力には自動タグが付くので上書きされず、まとめて聴き比べられます。
+
+```python
+# 映像を1回だけレンダリング（以降の音声パターンはこの映像を使い回す）
+bm.new_transprocess(out_type=2, del_data=False)   # out_type=2 は H.265/HEVC(HDR10 10bit)。del_data=False で軌道dataを音声に再利用
+
+# --- 基準2モード（depthエフェクトなし）---
+bm.audio_video_out(mode="play")                    # → _wAudio-play
+bm.audio_video_out(mode="grain")                   # → _wAudio-grain
+
+# --- depth→リバーブ（断面が深く折り畳まれるほど響く）---
+bm.audio_video_out(mode="play",  depth_reverb=True, reverb_wet=0.6, reverb_time=3.0)
+bm.audio_video_out(mode="grain", depth_reverb=True, reverb_wet=0.6, reverb_time=3.0,
+                   reverb_dry_duck=0.2)            # 深部で dry も下げる設定
+
+# --- depth→ローパス（深いほど暗く沈む）---
+bm.audio_video_out(mode="play", depth_lpf=True, lpf_range=(18000, 500))
+
+# --- depth→ステレオ幅（深いほど広がる）---
+bm.audio_video_out(mode="play", depth_width=True, width_range=(1.0, 2.2))
+
+# --- depth→デチューン（深いほど音像が揺らぐ）---
+bm.audio_video_out(mode="play", depth_detune=True, detune_cents=25)
+
+# --- depth→グレイン長（深いほど粒が長く時間が滲む）---
+bm.audio_video_out(mode="grain", grain_dur_range=(0.04, 0.3))
+
+# --- 全部盛り（深部で 響き+暗さ+広がり+長い粒 が同時に深まる）---
+bm.audio_video_out(mode="grain",
+                   depth_reverb=True, reverb_wet=0.5,
+                   depth_lpf=True, lpf_range=(16000, 800),
+                   depth_width=True,
+                   grain_dur_range=(0.05, 0.25),
+                   name_attr="full")               # → _wAudio-grain-dRev-dLPF-dWid-dGrain_full
+```
+
+各 depth エフェクトの意味と追加パラメータは [audio_render](#python内で完結する音声レンダリング-audio_render) の「フレーム内在時間（now depth）による音響変調」を参照してください。`name_attr` は自動タグに加えてさらに任意の識別子を付けたい場合に使います。
 
 ##### SuperCollider改良版出力 scd_out_v2
 リアルタイム処理・ライブ用途には SuperCollider 用の改良版出力を使います。旧 `scd_out` の CSV + 30Hz 制御ループの代わりに、補間済みの再生位置とバランス情報を多チャンネル float32 WAV（コントロールトラック）として書き出し、SC側は `BufRd` による位置駆動で再生します。クリックノイズ・周期軌道の再同期ずれが解消されています。
@@ -886,6 +1082,8 @@ bm.applyTimeBlur(100)                       # 境界を含めてブラー
 bm.arrayExtract(array.shape[0], array.shape[0]*2)  # 中央だけ取り出す
 ```
 
+![arrayExtract（3dプロット例）](images/doc_arrayExtract_3dplot.gif)
+
 ## `arrayReflection`
 `data`の時間反転コピーを末尾に連結し、行って戻ってくる往復（ミラー）構造を作ります。引数はありません。
 
@@ -894,6 +1092,8 @@ bm.arrayExtract(array.shape[0], array.shape[0]*2)  # 中央だけ取り出す
 bm.addTrans(150)
 bm.arrayReflection()   # 300フレームの往復軌道になる
 ```
+
+![arrayReflection（3dプロット例）](images/doc_arrayReflection_3dplot.gif)
 
 ## `wide_expandB`
 左右（上下）エッジのスリットの変化量を外挿して、`data`の空間次元を左右に`add_size`ずつ拡張します。入力映像より広いワイド/パノラマ出力を作るための下準備に使います。
@@ -910,6 +1110,8 @@ bm.arrayReflection()   # 300フレームの往復軌道になる
 bm.addCycleTrans(300)
 bm.wide_expandB(add_size=1920, z_offset=1)
 ```
+
+![wide_expandB（3dプロット例）](images/doc_wide_expandB_3dplot.gif)
 
 ## `interpolation_append`
 `data`末尾と`maneuver`先頭の間を`connection_num`フレームで滑らかに補間してから連結します。
@@ -974,6 +1176,8 @@ bm.addFlat(60, z_pos=1200, z_autofit=False)  # 入力の1200フレーム目で1�
 bm.addSlicePlane(frame_nums=1, xypoint=0.5, full_range=True)
 ```
 
+![addSlicePlane（3dプロット例）](images/doc_addSlicePlane_3dplot.png)
+
 ## `addFreeze`
 最終フレームの断面をそのまま`frame_nums`分複製して追加します（完全静止）。
 
@@ -986,6 +1190,7 @@ bm.addCycleTrans(240)
 bm.addFreeze(60)   # 回転後の断面で2秒静止
 ```
 
+![addFreeze（3dプロット例）](images/doc_addFreeze_3dplot.gif)
 
 ## `preExtend`
 軌道配列の先頭フレームを手前に`addframe`分複製して延長します（イントロの静止）。
@@ -998,6 +1203,7 @@ bm.addFreeze(60)   # 回転後の断面で2秒静止
 bm.preExtend(90)
 ```
 
+![preExtend（3dプロット例）](images/doc_preExtend_3dplot.gif)
 
 ## `addExtend`
 最終フレームを`addframe`分複製して延長します（時間レートは0になる）。`addFreeze`とほぼ同等ですが、空間軸のミラーオプションがあります。
@@ -1011,6 +1217,7 @@ bm.preExtend(90)
 bm.addExtend(60)
 ```
 
+![addExtend（3dプロット例）](images/doc_addExtend_3dplot.gif)
 
 ## `addCylinderCut`
 XYT時空間キューブを円筒面で切り出し、始点と終点が完全に一致するループ断面を1フレームとして追加します。(空間, 時間)平面上で 空間=sin(θ)、時間=cos(θ) の円（楕円）を描くようにサンプリングします。
@@ -1043,6 +1250,8 @@ XYT直方体の4辺を展開した面で切り出し、閉じたループ断面�
 ```python
 bm.addBoxUnfoldCut(center_time=1800)
 ```
+
+![addBoxUnfoldCut（3dプロット例）](images/doc_addBoxUnfoldCut_3dplot.png)
 
 ## `addTrans`
 
@@ -1123,6 +1332,7 @@ bm.addTrans(100)
 bm.addKeepSpeedTrans(200)   # addTransの末端速度を保って滑走
 ```
 
+![addKeepSpeedTrans（3dプロット例）](images/doc_addKeepSpeedTrans_3dplot.gif)
 
 ## `addInsertKeepSpeedTrans`
 `addKeepSpeedTrans`の発展版。`data`末尾の速度ベクトルと、`after_array`先頭の速度ベクトルの交点を計算し、両者を滑らかに橋渡しするフレームを挿入してから`after_array`を連結します。`after_array`は自動的に時間スライドされます。
@@ -1154,6 +1364,7 @@ bm.addInsertKeepSpeedTrans(120, after_array=next_array)
 bm.addWideKeyframeTrans(300, key_array=[(1920, 0), (3840, 600)], wide_scale=3)
 ```
 
+![addWideKeyframeTrans（3dプロット例）](images/doc_addWideKeyframeTrans_3dplot.gif)
 
 ## `addInterpolation`
 
@@ -1194,6 +1405,7 @@ bm.addInterpolation(100, 0, 0, 0,s_reversal=False,z_reversal=True)
 ```
 ![Alt text](images/sample_Vslit_IP180(ID0-ZD0-AP0-SREV0-ZREV1)_3dPlot.gif)
 
+![addInterpolation（3dプロット例）](images/doc_addInterpolation_3dplot.gif)
 
 ## `rootingA_interporation`
 `addInterpolation`を2回1組として`loop_num`回連結し、通常フレームとスリットスキャン面の間をジグザグに行き来する軌道を作るプリセットです。各セグメントは`FRAME_NUMS/(loop_num*2)`フレームになります。
@@ -1269,6 +1481,7 @@ rootingAの各パラメータを範囲指定でランダム化した版です。
 bm.rootingA_interporation_RANDOM((300, 900), interval_nums_range=(0, 120), loop_num=4, seed=42)
 ```
 
+![rootingA_interporation_RANDOM（3dプロット例）](images/doc_rootingA_interporation_RANDOM_3dplot.gif)
 
 ## `rootingAA_interporation`
 rootingAの変形版。空間の始点・終点を同じ位置に維持したまま往復するため、画面上の起点が固定されたループ的な動きになります。引数は`FRAME_NUMS`(int), `loop_num`(int, default 2), `axis_first_p`(int), `speed_round`(bool)。
@@ -1288,9 +1501,12 @@ bm.rootingAA_interporation(1200, loop_num=2)
 bm.rootingB_interporation(800, axis_fix_p=0)
 ```
 
+![rootingB_interporation（3dプロット例）](images/doc_rootingB_interporation_3dplot.gif)
+
 ## `rooting4C_interporation`
 連結性のある4パターンのプリセット（順方向×2＋軸違い×2）。引数は`FRAME_NUMS`(int)のみ。全体は`FRAME_NUMS×4`フレーム。
 
+![rooting4C_interporation（3dプロット例）](images/doc_rooting4C_interporation_3dplot.gif)
 
 ## `addCycleTrans`
 
@@ -1381,6 +1597,7 @@ bm.addWideCustomCycleTrans(600, cycle_degree=360, start_center=0.3, end_center=0
 bm.addFixWideCycleTrans(600, cycle_degree=180, wide_scale=3)
 ```
 
+![addFixWideCycleTrans（3dプロット例）](images/doc_addFixWideCycleTrans_3dplot.gif)
 
 ## `addWaveTrans`
 
@@ -1459,6 +1676,7 @@ bm.applyTimeFlowKeepingExtend(90, fade=True, intro=True, outro=False, fade_type=
 
 > 特定の時間位置(z)にきっちり着地させたい場合は、累積誤差の出ない座標ベース版 [`applyTimeFlowKeepingExtend_CoodinateBase_Intro`](#applytimeflowkeepingextend_coodinatebase_intro) / [`applyTimeFlowKeepingExtend_CoodinateBase_Outtro`](#applytimeflowkeepingextend_coodinatebase_outtro) を使ってください。
 
+![applyTimeFlowKeepingExtend（3dプロット例）](images/doc_applyTimeFlowKeepingExtend_3dplot.gif)
 
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Intro`
 座標ベースのイントロ延長。先頭のフレームの時間座標が`target_z`から始まるように、`num_frames`分を線形補間でプリペンドします。スリットごとのステップを`(data[0,slit,1] - target_z) / num_frames`で厳密に計算するため、累積誤差なしで狙った時間位置から始められます。
@@ -1472,6 +1690,7 @@ bm.applyTimeFlowKeepingExtend(90, fade=True, intro=True, outro=False, fade_type=
 bm.applyTimeFlowKeepingExtend_CoodinateBase_Intro(target_z=0, num_frames=150)
 ```
 
+![applyTimeFlowKeepingExtend_CoodinateBase_Intro（3dプロット例）](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Intro_3dplot.gif)
 
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Outtro`
 座標ベースのアウトロ延長。最終フレームの時間座標が`target_z`に着地するように`num_frames`分を線形補間でアペンドします。こちらも累積誤差ゼロを保証します。
@@ -1485,6 +1704,7 @@ bm.applyTimeFlowKeepingExtend_CoodinateBase_Intro(target_z=0, num_frames=150)
 bm.applyTimeFlowKeepingExtend_CoodinateBase_Outtro(target_z=bm.count-1, num_frames=150)
 ```
 
+![applyTimeFlowKeepingExtend_CoodinateBase_Outtro（3dプロット例）](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Outtro_3dplot.gif)
 
 ## `applyTimeForward`
 配列全体に時間の順方向の流れを付与します。フレームkの時間座標に`slide_time × k`を加算します。
@@ -1641,6 +1861,8 @@ bm.applyTimeSlide(0)          # 冒頭を入力映像の頭に合わせる
 bm.applyTimeSlide(3600, -1)   # 末尾を3600フレーム目に合わせる
 ```
 
+![applyTimeSlide（3dプロット例）](images/doc_applyTimeSlide_3dplot.gif)
+
 ## `applyInOutGapFix`
 先頭フレームと最終フレームの時間差分を全フレームに線形に分配して打ち消します（シームレスループの補助）。引数なし。
 
@@ -1648,6 +1870,8 @@ bm.applyTimeSlide(3600, -1)   # 末尾を3600フレーム目に合わせる
 ```python
 bm.applyInOutGapFix()
 ```
+
+![applyInOutGapFix（3dプロット例）](images/doc_applyInOutGapFix_3dplot.gif)
 
 ## `applyInFix`
 先頭フレームの時間座標を`target_z_array`に一致させます。最終フレームは固定したまま、線形ブレンドで徐々に補正が効くようにします。
@@ -1703,6 +1927,7 @@ bm.applyInFix(first_section[-1,:,1])   # 前のセクションの末尾と揃え
 bm.applySpaceBlur(60)
 ```
 
+![applySpaceBlur（3dプロット例）](images/doc_applySpaceBlur_3dplot.gif)
 
 ## `applyTimeBlur`
 時間座標(`data[:,:,1]`)にフレーム方向のボックスブラーをかけ、時間の動きを滑らかにします。エッジ処理には内部で`timeFlowKeepingExtend`によるパディングを使用しているため、端の速度が乱れません。
@@ -1715,6 +1940,7 @@ bm.applySpaceBlur(60)
 bm.applyTimeBlur(60)
 ```
 
+![applyTimeBlur（3dプロット例）](images/doc_applyTimeBlur_3dplot.gif)
 
 ## `applyCustomeBlur`
 指定したフレーム範囲だけに重み付き平均ブラーを適用します。接続部など局所的な折れ目を滑らかにするのに使います。
@@ -1730,6 +1956,7 @@ bm.applyTimeBlur(60)
 bm.applyCustomeBlur(s_frame=280, e_frame=420, bl_time=60)
 ```
 
+![applyCustomeBlur（3dプロット例）](images/doc_applyCustomeBlur_3dplot.gif)
 
 ## `applyLoopBlur`
 `data`を3連結してブラーをかけ、そのまま長さ3倍のデータにします。ループの境界をまたいだ連続的なブラーが得られます（必要に応じて`arrayExtract`で中央を切り出して使用）。
@@ -1745,12 +1972,16 @@ bm.applyLoopBlur(0, 100)
 bm.arrayExtract(n, n*2)   # 中央部を取り出してループ用データに
 ```
 
+![applyLoopBlur（3dプロット例）](images/doc_applyLoopBlur_3dplot.gif)
+
 ## `applyConnectLoopBlur`
 ループの接続部（先頭と末尾の前後`connect_frame`）だけにブラーを適用します。データ長は変わりません。
 
 ### 引数
 - `sblur`(int) / `tblur`(int): 空間/時間ブラーのカーネルサイズ。
 - `connect_frame`(int, optional, default: `100`): 接続部の適用範囲（フレーム数）。
+
+![applyConnectLoopBlur（3dプロット例）](images/doc_applyConnectLoopBlur_3dplot.gif)
 
 ## `applyPointBlur`
 指定フレームを中心とした範囲だけにブラーを適用します。
@@ -1760,9 +1991,12 @@ bm.arrayExtract(n, n*2)   # 中央部を取り出してループ用データに
 - `sblur`(int) / `tblur`(int): 空間/時間ブラーのカーネルサイズ。
 - `range_frame`(int, optional, default: `100`): 適用範囲（中心から前後）。
 
+![applyPointBlur（3dプロット例）](images/doc_applyPointBlur_3dplot.gif)
+
 ## `applySpaceFlip`
 空間座標を左右（横スリット時は上下）反転します。引数なし。
 
+![applySpaceFlip（3dプロット例）](images/doc_applySpaceFlip_3dplot.gif)
 
 ## `applySpaceFlat`
 空間座標を初期状態の連番（0〜scan_nums-1）にリセットします。空間の歪みを取り除き、通常フレームの並びに戻します。引数なし。
@@ -1773,6 +2007,7 @@ bm.addCycleTrans(300)     # 空間も回転する
 bm.applySpaceFlat()       # 空間は固定し、時間の歪みだけを残す
 ```
 
+![applySpaceFlat（3dプロット例）](images/doc_applySpaceFlat_3dplot.gif)
 
 ## `zCenterArange`
 時間座標のmin/maxの中央が入力映像の中央（`count/2`、または指定値）に来るよう全体をシフトします。NaN安全。
@@ -1786,6 +2021,8 @@ bm.addCycleTrans(300, zscale=2)
 bm.zCenterArange()   # 入力映像の中央を軸に収める
 ```
 
+![zCenterArange（3dプロット例）](images/doc_zCenterArange_3dplot.gif)
+
 ## `zArange`
 指定フレームの時間座標（スリット平均）が目標時間に来るよう全体をスライドします。`zCenterArange`がデータ全体のmin/max中央基準なのに対し、こちらは特定フレームを基準にできます。
 
@@ -1798,8 +2035,12 @@ bm.zCenterArange()   # 入力映像の中央を軸に収める
 bm.zArange(0, 1800)   # 先頭フレームを1800フレーム目基準に
 ```
 
+![zArange（3dプロット例）](images/doc_zArange_3dplot.gif)
+
 ## `zStartArange`
 時間座標の最小値が0になるよう全体をシフトします。引数なし。
+
+![zStartArange（3dプロット例）](images/doc_zStartArange_3dplot.gif)
 
 ## `zPointCheck`
 時間座標が有効範囲（0〜`count`）に収まっているかチェックし、はみ出している場合は自動調整します。シフトで収まる場合はシフト、収まらない場合は時間方向のスケーリングで収めます。レンダリング前の安全確認に使用します。
@@ -1813,11 +2054,15 @@ bm.zPointCheck()
 bm.transprocess()
 ```
 
+![zPointCheck（3dプロット例）](images/doc_zPointCheck_3dplot.gif)
+
 ## `zPointCheckandReflect`
 範囲外の時間座標を境界で反射（リフレクト）させて折り返す版です。シフトやスケールで全体を動かしたくない場合に使用します。
 
 ### 引数
 - `subtract_count`(int, optional, default: `0`): 上限側のマージン。
+
+![zPointCheckandReflect（3dプロット例）](images/doc_zPointCheckandReflect_3dplot.gif)
 
 ## `spline_interpolate`
 キーフレーム値列（空間全域に等間隔配置）をスプライン/線形/ベジェで補間し、任意の位置`x`での値を返す汎用ヘルパです。`applyTimebyKeyframetoSpace`の内部で使用されますが、単独でも利用できます。

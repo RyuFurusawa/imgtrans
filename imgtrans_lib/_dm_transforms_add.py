@@ -871,9 +871,9 @@ class TransformsAddMixin:
     def rootingB_interporation(self,FRAME_NUMS,loop_num=1,axis_fix_p=0):
         r=0
         for i in range(loop_num):
-            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=axis_fix_p,reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = True,cycle_degree=180,rrange=[0.5,1])
+            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=axis_fix_p,s_reversal=r%2,zslide=(self.scan_nums-1)*i,speed_round = True,cycle_degree=180,rrange=[0.5,1])
             r+=1
-            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=axis_fix_p,reversal=r%2,zslide=(self.scan_nums-1)*i+(self.scan_nums-1), speed_round = True,cycle_degree=180,rrange=[0,0.5])
+            self.interpolation(int(FRAME_NUMS/(loop_num*2)),i_direction=1,z_direction=1,axis_position=axis_fix_p,s_reversal=r%2,zslide=(self.scan_nums-1)*i+(self.scan_nums-1), speed_round = True,cycle_degree=180,rrange=[0,0.5])
         self.maneuver_log("IP"+str(FRAME_NUMS)+"(rootingB_axis"+str(axis_fix_p)+")")
 
 
@@ -933,6 +933,17 @@ class TransformsAddMixin:
     １であれば、一定の変化。１以下であれば、収束に向かう。１以上であれば加速していることが判る。
     "under_xyp"　"over_xyp"で指定した空間領域の位置を越えるまで、その移動歩行と速度に対して、変化度合いをマイフレーム掛け合わせながら新規フレームを追加していく。
     """
+    @staticmethod
+    def _safe_accel(vector, prevector):
+        """加速度 = 現在の差分 / 直前の差分。直前が 0 のときは等速 (1.0) とみなす。
+
+        直前フレームに動きが無い軸 (例: addTrans 直後の時間軸) では 0/0 に
+        なって NaN が伝播し、以降のプロットやレンダリングが失敗していた。
+        """
+        return np.divide(vector, prevector,
+                         out=np.ones_like(np.asarray(vector, dtype=np.float64)),
+                         where=np.asarray(prevector) != 0)
+
     def addKeepSpeedTrans(self,frame_nums,under_xyp=None,over_xyp=1,rendertype=0):
         if under_xyp == None : under_xyp = self.scan_nums
         # rendertype１ の場合は、配列ごとに移動の差分ベクトルを取得する。0は平均のベクトルを出す。
@@ -941,12 +952,12 @@ class TransformsAddMixin:
         #xp,ypの空間領域(SpaceDomain)の差分計算
         vector_xyp = self.data[-1,:,0]-self.data[-2,:,0] if rendertype != 0 else np.mean( self.data[-1,:,0]-self.data[-2,:,0] )
         prevector_xyp = self.data[-2,:,0]-self.data[-3,:,0] if rendertype != 0 else np.mean( self.data[-2,:,0]-self.data[-3,:,0] )
-        acceleration_xyp = vector_xyp/prevector_xyp 
-        
+        acceleration_xyp = self._safe_accel(vector_xyp, prevector_xyp)
+
         #zpの差分計算
         vector_zp = self.data[-1,:,1]-self.data[-2,:,1] if rendertype != 0 else np.mean( self.data[-1,:,1]-self.data[-2,:,1] )
         prevector_zp = self.data[-2,:,1]-self.data[-3,:,1] if rendertype != 0 else np.mean( self.data[-2,:,1]-self.data[-3,:,1] )
-        acceleration_zp = vector_zp/prevector_zp 
+        acceleration_zp = self._safe_accel(vector_zp, prevector_zp)
         # print(acceleration)
         normalFrame=np.arange(0,self.scan_nums)
         n=0

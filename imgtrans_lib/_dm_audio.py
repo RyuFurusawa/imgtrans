@@ -56,7 +56,22 @@ class AudioMixin:
           traj_sec   : (F, n) ソース内の再生位置 [秒]
           inpan_traj : (F, n) 正規化した空間座標 (0..1)。
                        0=ソース左端 (Lチャンネル寄り) / 1=右端 (Rチャンネル寄り)
+
+        サーフェスモード (surfaceTransprocess / setup_surface_audio 実行後) では
+        maneuver data ではなくマップのグリッドセル平均から軌跡を作る。
         """
+        st = getattr(self, "surface_audio_state", None)
+        if st is not None:
+            # === サーフェス: cols x rows セルの平均時刻を各ボイスの軌跡にする ===
+            pos = self.surface_grid_time_positions()          # (F, V) 正規化 0..1
+            traj_sec = pos * (int(self.count) / self.recfps)  # 入力クリップ内の秒
+            cols = st["cols"]
+            # アプリと同じ定位: 列 → ステレオパン / 行 → 定位に寄与しない
+            # basePan = -1 + 2*(col+0.5)/cols を 0..1 へ写したもの
+            col_pan = ((np.arange(pos.shape[1]) % cols) + 0.5) / cols
+            inpan_traj = np.tile(col_pan, (pos.shape[0], 1))
+            return traj_sec.astype(np.float64), inpan_traj.astype(np.float64)
+
         if len(self.data) == 0:
             raise ValueError("maneuver data がありません。先に add 系の変換を実行してください。")
         idx = self._audio_voice_indices(n_voices)
@@ -242,10 +257,21 @@ class AudioMixin:
 
         depth_range: 正規化上限 [秒]。None なら全フレーム中の最大値で正規化。
         smooth_sec : ジッパーノイズ防止の平滑化時間 [秒]。
+
+        サーフェスモードでは「フレーム内のセル時刻の広がり」を使う
+        (アプリの GridAudioEngine.update が reverb.targetDepth に与える量と同じ)。
+        ラップをまたぐ場合は近い方の弧長で測る。
         """
-        F = self.data.shape[0]
-        z = self.data[:, :, 1]
-        depth_sec = (np.nanmax(z, axis=1) - np.nanmin(z, axis=1)) / self.recfps
+        if getattr(self, "surface_audio_state", None) is not None:
+            pos = self.surface_grid_time_positions()       # (F, V) 0..1
+            F = pos.shape[0]
+            direct = pos.max(axis=1) - pos.min(axis=1)
+            arc = np.minimum(direct, 1.0 - direct)         # ラップを考慮した広がり
+            depth_sec = arc * (int(self.count) / self.recfps)
+        else:
+            F = self.data.shape[0]
+            z = self.data[:, :, 1]
+            depth_sec = (np.nanmax(z, axis=1) - np.nanmin(z, axis=1)) / self.recfps
         ref = float(depth_range) if depth_range else float(np.max(depth_sec))
         if ref <= 0:
             return np.zeros(n_out)
@@ -261,15 +287,23 @@ class AudioMixin:
 
     @staticmethod
     def _fx_reverb(out, sr, d, wet=0.4, reverb_time=2.5, predelay=0.048,
-                   dry_duck=0.0):
+                   dry_duck=0.0, room_size=1.0):
         """Schroeder型リバーブ (プリディレイ+並列comb+直列allpass)。
-        wet量が depth 信号 d(t) に追従する。旧SC Rev版のPython移植相当。"""
+        wet量が depth 信号 d(t) に追従する。旧SC Rev版のPython移植相当。
+
+        room_size: 空間の広さ (0.2〜4.0 程度)。コムフィルタの遅延長を倍率で
+          スケールする。1.0 = 既定 (中規模ホール相当、遅延 29.7〜44.9ms)。
+          小さくすると密度が上がって金属的な小部屋に、大きくすると
+          反射間隔が伸びて広い空間になる。減衰時間 (reverb_time) とは独立。
+        """
         n = out.shape[1]
         pd = int(predelay * sr)
         x = np.zeros_like(out)
         if pd < n:
             x[:, pd:] = out[:, :n - pd]
-        comb_ms = [29.7, 37.1, 41.1, 43.7, 31.3, 33.5, 39.1, 44.9]
+        rs = float(np.clip(room_size, 0.1, 8.0))
+        comb_ms = [m * rs for m in
+                   (29.7, 37.1, 41.1, 43.7, 31.3, 33.5, 39.1, 44.9)]
         rev = np.zeros_like(out)
         for ch in range(2):
             acc = np.zeros(n)
@@ -279,8 +313,10 @@ class AudioMixin:
                 a = np.zeros(D + 1); a[0] = 1.0; a[D] = -g
                 acc += lfilter([1.0], a, x[ch])
             acc /= len(comb_ms)
+            # 拡散用オールパスも空間の広さに追従させる。ここを固定長のままに
+            # すると、広い設定でもこの段が反射を支配して "広さ" が聴こえない。
             for ms, g in ((5.0, 0.7), (1.7, 0.7), (12.3, 0.65), (9.3, 0.6)):
-                D = max(int(ms / 1000 * sr), 2)
+                D = max(int(ms * rs / 1000 * sr), 2)
                 b = np.zeros(D + 1); b[0] = -g; b[D] = 1.0
                 a = np.zeros(D + 1); a[0] = 1.0; a[D] = -g
                 acc = lfilter(b, a, acc)
@@ -348,11 +384,23 @@ class AudioMixin:
                      gain=1.0, out_name=None,
                      depth_reverb=False, reverb_wet=0.4, reverb_time=2.5,
                      reverb_predelay=0.048, reverb_dry_duck=0.0,
+                     reverb_room_size=1.0,
                      depth_lpf=False, lpf_range=(18000.0, 600.0),
                      depth_width=False, width_range=(1.0, 1.8),
                      depth_detune=False, detune_cents=18.0, detune_rate=0.15,
-                     grain_dur_range=None, depth_range=None):
+                     grain_dur_range=None, depth_range=None,
+                     surface_map=None, surface_kwargs=None):
         """Maneuver Data を音声に適用してステレオ WAV を書き出す。
+
+        ==== サーフェスモード ====
+        surfaceTransprocess() 実行後に呼ぶと、maneuver data の代わりに
+        サーフェスマップのグリッドセル (既定 7x5=35) の平均時刻を
+        ボイスごとの軌跡として使う (TimeFlowStudio の GridAudio と同じ意味論)。
+        定位も列 → ステレオパンでアプリと同じ。thread_num は無視され、
+        ボイス数はグリッドのセル数になる。
+        surface_map を渡すと、映像を作らずにその場で
+        setup_surface_audio(surface_map, **surface_kwargs) を実行する。
+        アプリの既定合成方式はグラニュラーなので mode="grain" が対応する。
 
         mode:
           "play"  : 可変速再生 (ピッチは速度に追従。旧 SC_Play 相当)
@@ -376,7 +424,8 @@ class AudioMixin:
         制御信号 d(t) で、以下のエフェクトの深さを駆動できる (併用可)。
         depth_reverb : True でリバーブの wet 量が d(t) に追従 (旧SC Rev版相当)。
                        reverb_wet (最大wet), reverb_time (RT60秒),
-                       reverb_predelay, reverb_dry_duck (深部でdryを下げる率0-1)
+                       reverb_predelay (初期反射までの間), reverb_room_size
+                       (空間の広さ倍率), reverb_dry_duck (深部でdryを下げる率0-1)
         depth_lpf    : True でローパスのカットオフが d(t) に追従。
                        lpf_range=(d=0時のHz, d=1時のHz) 対数補間
         depth_width  : True でステレオ幅(M/S)が d(t) に追従。
@@ -388,11 +437,17 @@ class AudioMixin:
         depth_range  : d(t) の正規化上限 [秒]。None なら最大値で正規化
         """
         print(sys._getframe().f_code.co_name)
+        if surface_map is not None:
+            self.setup_surface_audio(surface_map, **(surface_kwargs or {}))
         audio_path = self._resolve_audio_path(audio_path)
         src = self._audio_decode(audio_path, sr)  # (2, N)
 
         traj_sec, inpan_traj = self._audio_trajectories(thread_num)
         F, n_voices = traj_sec.shape
+        st = getattr(self, "surface_audio_state", None)
+        if st is not None:
+            print(f"surface audio: {st['cols']}x{st['rows']}={n_voices}voices "
+                  f"[{st['interpretation']}] frames={F} (thread_num は無視)")
         n_out = int(round(F / self.outfps * sr))
         out = np.zeros((2, n_out), dtype=np.float64)
 
@@ -467,7 +522,8 @@ class AudioMixin:
                 fx_attr += "-dWid"
             if depth_reverb:
                 out = self._fx_reverb(out, sr, d_sig, reverb_wet, reverb_time,
-                                      reverb_predelay, reverb_dry_duck)
+                                      reverb_predelay, reverb_dry_duck,
+                                      reverb_room_size)
                 fx_attr += "-dRev"
             if use_grain_depth:
                 fx_attr += "-dGrain"
@@ -481,7 +537,9 @@ class AudioMixin:
 
         base = out_name if out_name else self._audio_out_basename()
         harm_attr = f"-h{n_harmonics}" if n_harmonics else ""
-        fname = f"{base}_PyAudio-{mode}-{smooth}{harm_attr}{fx_attr}-{n_voices}voices.wav"
+        surf_attr = f"-surface{st['cols']}x{st['rows']}" if st is not None else ""
+        fname = (f"{base}_PyAudio-{mode}-{smooth}{harm_attr}{surf_attr}{fx_attr}"
+                 f"-{n_voices}voices.wav")
         wavfile.write(fname, sr, out.T.astype(np.float32))
         print("audio_render out:", fname)
         return fname
@@ -583,6 +641,10 @@ class AudioMixin:
 
         映像ストリームは再エンコードせずコピーするため画質劣化はない。
         音声は .mov には PCM 24bit、それ以外 (.mp4 等) には AAC 320k で載せる。
+
+        surfaceTransprocess() の直後に呼ぶと、サーフェスのグリッド時刻から
+        音声を作って統合する (TimeFlowStudio と同じ意味論)。映像・音声とも
+        同じ出力フレーム範囲から作られるので尺と同期は自動的に一致する。
         """
         print(sys._getframe().f_code.co_name)
         if videopath is None:
@@ -592,6 +654,9 @@ class AudioMixin:
                 "結合する映像が見つかりません。transprocess 等で映像を書き出してから"
                 "呼ぶか、videopath を指定してください。")
         fx_tag = self._audio_fx_tag(**audio_kwargs) if rendered_audio is None else None
+        st = getattr(self, "surface_audio_state", None)
+        if fx_tag and st is not None:
+            fx_tag = f"surface{st['cols']}x{st['rows']}-" + fx_tag
         if rendered_audio is None:
             rendered_audio = self.audio_render(thread_num=thread_num, **audio_kwargs)
 

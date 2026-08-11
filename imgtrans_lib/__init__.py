@@ -18,6 +18,7 @@
   _dm_transforms_add    drawManeuver: addTrans/addCycle/rooting* など追加系
   _dm_rendering     drawManeuver: transprocess / new_transprocess / pretransprocess /
                                   overlay_tc_rate (メインレンダリング)
+  _dm_surface       drawManeuver: surfaceTransprocess (画素ごとの時間マップレンダリング)
   _dm_visualize     drawManeuver: maneuver_2dplot/3dplot/imgplot/animationout など可視化
   _dm_audio         drawManeuver: audio_render/scd_out_v2/maneuver_fourier_out (音声出力)
 """
@@ -91,6 +92,7 @@ from ._dm_data_ops import DataOpsMixin
 from ._dm_transforms_apply import TransformsApplyMixin
 from ._dm_transforms_add import TransformsAddMixin
 from ._dm_rendering import RenderingMixin
+from ._dm_surface import SurfaceRenderingMixin
 from ._dm_visualize import VisualizeMixin
 from ._dm_audio import AudioMixin
 
@@ -103,6 +105,7 @@ class drawManeuver(
     TransformsApplyMixin,
     TransformsAddMixin,
     RenderingMixin,
+    SurfaceRenderingMixin,
     VisualizeMixin,
     AudioMixin,
 ):

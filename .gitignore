@@ -104,3 +104,7 @@ __pycache__
 
 # 別リポジトリ(imgtrans-gui)で管理しているため無視
 /test20260526.py
+
+# ドキュメント生成 (tools/gen_method_docs.py) の作業ファイル
+/images/_doc_source.mp4
+/images/_doc_source_*/

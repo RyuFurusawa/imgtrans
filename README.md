@@ -298,6 +298,67 @@ bm.transprocess(out_type=3)   # ProRes 422 HQ 10bit .mov (recommended for HDR ar
 
 For details, refer to [`transprocess`](#transprocess) and the [Output Type Summary](#output-type-summary) table.
 
+#### Surface Rendering (surfaceTransprocess)
+
+While `transprocess` scans time in slit (1D) units, `surfaceTransprocess` renders with a **2D 16bit grayscale map specifying the reference time per pixel**. It shares the exact semantics of the surface mode in TimeFlowStudio (iOS), and is intended for finishing maps exported from iPhone at full resolution / high bit depth on the desktop.
+
+The map uses the same XY coordinate system as the input video (automatically resized if the resolution differs). The trajectory data `self.data` is not used.
+
+```python
+bm = imgtrans.drawManeuver(videopath, 1)
+
+# "time" interpretation: brightness = time displacement (like AE Time Displacement)
+bm.surfaceTransprocess("surface_map.png", interpretation="time",
+                       amplitude_sec=3.0, out_type=3)
+
+# "rate" interpretation: brightness = playback rate
+# (black = -1 reverse / white = +1 forward, each pixel runs as an independent clock)
+bm.surfaceTransprocess("surface_map.png", interpretation="rate",
+                       rate_white=1.0, rate_black=-1.0,
+                       anchor=0.5, start_time=0.5, out_type=3)
+```
+
+Main options:
+
+| Argument | Meaning |
+|---|---|
+| `interpretation` | `"time"` (time displacement) / `"rate"` (per-pixel playback rate) |
+| `out_frame_num` | Output frame count (default: input duration for time / 30 sec for rate, at outfps) |
+| `amplitude_sec` | time: displacement amount in seconds |
+| `rate_white` `rate_black` | rate: playback rate of white/black (default +1 / -1) |
+| `anchor` `start_time` | rate: output position where all pixels coincide, and the input position at that moment (0..1) |
+| `wrap` | Out-of-range time: `True` = wrap (default) / `False` = clamp |
+| `time_interp` | `"nearest"` (default, fast) / `"linear"` (2-frame weighted blend) |
+| `pixel_step` | Output downscale (2 = half resolution), for benchmarking/preview |
+| `separate_num` `out_type` | Same memory split / output type as `transprocess` |
+
+Internally, output frames are split into segments; the reference frame of every pixel is radix-sorted to build a reverse map (source frame → destination pixels), and the source video is decoded sequentially in a single pass per segment while scatter-writing. Since wrapping scatters references across the whole clip, the read cost is fundamentally "number of segments × full source decode" (fewer segments = faster).
+
+##### Audio for Surface Mode
+
+Calling `audio_render()` / `audio_video_out()` right after `surfaceTransprocess` derives each voice's playback time from the **average brightness of the surface map's grid cells** (7×5 = 35 voices by default) instead of the maneuver data — the same semantics as TimeFlowStudio's `GridAudio`.
+
+```python
+bm.surfaceTransprocess("surface_map.png", interpretation="rate", out_type=3)
+bm.audio_video_out(mode="grain", grain_dur=0.085, depth_reverb=True)
+```
+
+Because the brightness → time mapping is affine in every mode, "the time obtained from the cell's average brightness" is exactly "the average time within the cell". Matched to the app:
+
+- **Grid reduction**: cell averages using the same band split as `reduceGrid`, at the map's native resolution
+- **Panning**: column → equal-power stereo pan; row → no contribution to panning
+- **Reverb**: depth driven by the spread of cell times within a frame (shortest arc, wrap-aware) via `depth_reverb=True`
+- **Synthesis**: `mode="grain"` is the app's default granular (pitch preserving); `mode="play"` is tape-style (pitch follows rate)
+
+`thread_num` is ignored — the voice count equals the number of grid cells. The output frame range is shared with the video, so length and sync always match. To render audio only, pass the map and parameters directly:
+
+```python
+bm.audio_render(mode="grain", surface_map="surface_map.png",
+                surface_kwargs=dict(interpretation="rate", out_frame_num=900))
+```
+
+The grid size can be changed via `bm.SURFACE_AUDIO_COLS` / `bm.SURFACE_AUDIO_ROWS` (default 7 / 5) or `setup_surface_audio(..., cols=, rows=)`.
+
 #### Color Pipeline in Video Rendering
 
 This section describes the complete color conversion pipeline from source video to rendered output. Understanding this flow is critical for maintaining color accuracy, especially with HDR (PQ/HLG) content in BT.2020 color space.
@@ -572,28 +633,126 @@ Main parameters:
 - `jump_thresh_sec`: threshold [sec] for detecting discontinuous jumps in the trajectory. Jumps are split into segments and cross-faded to prevent clicks
 
 **Sound modulation by the frame-internal time depth (now depth):**
-The time span contained within one output frame (`max(z)-min(z)`) is normalized into a 0..1 control signal d(t) that can drive the following effects (combinable). This is the Python-native version of the idea in the legacy `scd_out` Rev variants, which applied now_depth to reverb. Flat cross-sections (normal frames) stay dry; the deeper the section folds into time, the stronger the effect.
 
-- `depth_reverb`(bool): wet level of a Schroeder reverb follows d(t). `reverb_wet` (max wet, default 0.4), `reverb_time` (RT60 sec, default 2.5), `reverb_predelay` (sec, default 0.048), `reverb_dry_duck` (0-1, ducks the dry level at depth)
-- `depth_lpf`(bool): cutoff of a 12dB/oct lowpass follows d(t). `lpf_range=(Hz at d=0, Hz at d=1)` (default (18000, 600), log interpolation)
-- `depth_width`(bool): stereo width (M/S) follows d(t). `width_range=(at d=0, at d=1)` (default (1.0, 1.8))
-- `depth_detune`(bool): wet level of a detune/chorus follows d(t). `detune_cents` (max detune, default 18), `detune_rate` (LFO Hz, default 0.15)
-- `grain_dur_range=(min sec, max sec)`: in grain mode, the grain length follows d(t) (deeper = longer smear). Takes precedence over `grain_dur`
-- `depth_range`(float): normalization ceiling of d(t) in seconds. None = normalized by the maximum over all frames
+###### 1. What is "now depth"?
+
+One output frame is not necessarily a single instant of the input video.
+When a cross-section is tilted (e.g. by `addCycleTrans`), **the left and right edges
+of the frame read different input times**. That spread is the
+"thickness of time the frame contains" — the **now depth**.
+
+```
+now depth of a frame [sec] = ( max(z) − min(z) ) / recfps
+                              ↑ newest vs oldest input time across slits in one frame
+```
+
+| Cross-section | now depth | Effect on sound |
+|---|---|---|
+| Flat normal frame (all slits share one time) | **0** | No effect (dry) |
+| Slightly tilted | small | Slight effect |
+| Deeply folded into time | **large** | Maximum effect |
+
+This value, normalized to **0..1 as the control signal d(t)**, drives the depth of
+every effect below. `depth_range` (sec) sets what counts as 1.0; if omitted, the
+maximum value in the piece becomes 1.0. It is smoothed over 0.25 s to avoid zipper noise.
+
+In short, it automatically maps **"the thicker the folded time, the more distant,
+darker, wider and more wavering the sound"** — the audio follows the amount of
+visual deformation without hand-written automation.
+
+> In surface mode the same idea uses the spread of cell times across the screen
+> (wrap-aware, measured along the shorter arc).
+
+###### 2. What each effect does
+
+**`depth_reverb` — reverb (the space)**
+
+Schroeder type (predelay → 8 parallel combs → 4 serial allpasses).
+Only the **wet amount** follows d(t); the character of the space itself stays fixed.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `reverb_wet` | 0.4 | Wet amount at d=1. 0 = dry, 1 = reverb only. **Strength of the effect** |
+| `reverb_room_size` | 1.0 | **Size of the space.** Scales the comb delays (29.7–44.9 ms). 0.3 = small room / 1.0 = mid hall / 2.5 = cathedral. Smaller = denser, more metallic; larger = longer gaps between reflections, more vast |
+| `reverb_time` | 2.5 | **Seconds until the tail decays** (RT60). Independent of size — a large but absorbent space still decays quickly |
+| `reverb_predelay` | 0.048 | Gap [sec] before the first reflection. Longer = source closer, walls further |
+| `reverb_dry_duck` | 0.0 | Ducks the dry signal (0–1) as d grows. Near 1.0 the source recedes completely at depth |
+
+> **Size and decay time are different things.** Size is "how far apart the
+> reflections arrive"; decay time is "how long until silence".
+> Large stone space = big room_size + long reverb_time;
+> small tiled bathroom = small room_size + fairly long reverb_time.
+
+**`depth_lpf` — lowpass filter (muffling)**
+
+Two one-pole stages (~12 dB/oct). The **cutoff frequency** follows d(t).
+
+- `lpf_range=(Hz at d=0, Hz at d=1)`, default `(18000, 600)`
+- Log interpolation, so the sweep sounds even
+- By default: flat section = 18 kHz (essentially open) → deep section = 600 Hz (underwater)
+- Reverse it — `(600, 18000)` — to make deeper sections *brighter*
+
+**`depth_width` — stereo width**
+
+M/S processing (Mid = L+R content, Side = L−R content); the Side component is scaled.
+
+- `width_range=(at d=0, at d=1)`, default `(1.0, 1.8)`
+- `1.0` = untouched / `0.0` = fully mono / `1.8` = strongly widened
+- Default: flat = normal stereo → deep = the field opens out
+- `(1.0, 0.0)` inverts it: deeper sections collapse toward the centre
+
+**`depth_detune` — detune / chorus (pitch wavering)**
+
+Two LFO-modulated short delays are mixed with the dry signal, slightly pitch-shifted.
+The **mix amount** follows d(t).
+
+- `detune_cents`, default 18.0 — pitch offset. 100 cents = a semitone; 18 cents is a gentle beat
+- `detune_rate`, default 0.15 — LFO speed [Hz]. 0.15 = one cycle per ~6.7 s
+- Larger values (e.g. 50 cents) give an audibly unstable, seasick character
+
+**`grain_dur_range` — grain length (grain mode only)**
+
+`grain_dur_range=(sec at d=0, sec at d=1)`; takes precedence over `grain_dur`
+(default grain length 0.1 s). With `(0.05, 0.3)`:
+flat section = short, articulate grains → deep section = long, smeared grains.
+
+###### 3. Combination examples
 
 ```python
-# Example: deeper folds get more reverb, darker and wider
+# (1) Deeper = more distant and darker — a sense of depth
 bm.audio_video_out(mode="grain",
                    depth_reverb=True, reverb_wet=0.6,
-                   depth_lpf=True, depth_width=True,
+                   reverb_room_size=2.0, reverb_time=4.0,   # wide, long tail
+                   reverb_dry_duck=0.4,                     # duck the dry at depth
+                   depth_lpf=True, lpf_range=(18000, 500))
+
+# (2) Small metallic room (tight size, short tail)
+bm.audio_video_out(mode="play",
+                   depth_reverb=True, reverb_wet=0.5,
+                   reverb_room_size=0.3, reverb_time=1.2,
+                   reverb_predelay=0.010)
+
+# (3) Deeper = wider field and wavering pitch
+bm.audio_video_out(mode="grain",
+                   depth_width=True, width_range=(1.0, 2.0),
+                   depth_detune=True, detune_cents=35, detune_rate=0.1,
                    grain_dur_range=(0.05, 0.3))
+
+# (4) Everything, with an explicit ceiling so the amount matches across pieces
+bm.audio_video_out(mode="grain", depth_range=3.0,   # 3 seconds of depth = d 1.0
+                   depth_reverb=True, reverb_room_size=1.5,
+                   depth_lpf=True, depth_width=True, depth_detune=True,
+                   grain_dur_range=(0.06, 0.25))
 ```
+
+Enabled effects are tagged in the output filename automatically
+(e.g. `..._wAudio-grain-dRev-dLPF-dWid.mp4`), so comparisons never get mixed up.
 
 ##### Integrated audio+video output: audio_video_out
 Call this after rendering the video with `transprocess` etc.; it renders the audio and muxes it into the video in one step, producing a **video with audio**. The video stream is copied without re-encoding, so there is no quality loss (audio: PCM 24bit for .mov, AAC 320k for .mp4).
 
 ```python
-bm.transprocess()                                  # render the video
+bm.transprocess(del_data=False)                                  # render the video
 bm.audio_video_out(thread_num=20, mode="grain")    # render audio + mux in one call
 # → produces *_wAudio.mp4 (.mov) next to the latest video output
 ```
@@ -605,6 +764,45 @@ bm.audio_video_out(thread_num=20, mode="grain")    # render audio + mux in one c
 
 The output filename automatically gets a tag describing the audio processing (mode + enabled depth effects), which makes A/B comparison of multiple patterns easy.
 E.g. `xxx_wAudio-play.mp4` / `xxx_wAudio-grain-dRev-dLPF_take1.mp4`
+
+###### Example: render the video once, then batch-compare audio patterns
+Because `audio_video_out` reuses the video stream by copying it, you only need to **render the video once** and can then emit many versions of the same video that differ only in audio parameters. Render with `del_data=False` so the trajectory data (`data`) is kept, allowing each `audio_video_out` call to reuse that trajectory in its internal `audio_render`. Every output gets a unique auto tag, so nothing is overwritten and you can audition them side by side.
+
+```python
+# Render the video only once (the audio patterns below all reuse this video)
+bm.new_transprocess(out_type=2, del_data=False)   # out_type=2 is H.265/HEVC (HDR10 10bit); del_data=False keeps the trajectory for audio
+
+# --- Two baseline modes (no depth effects) ---
+bm.audio_video_out(mode="play")                    # → _wAudio-play
+bm.audio_video_out(mode="grain")                   # → _wAudio-grain
+
+# --- depth → reverb (the deeper a slice is folded, the more it resonates) ---
+bm.audio_video_out(mode="play",  depth_reverb=True, reverb_wet=0.6, reverb_time=3.0)
+bm.audio_video_out(mode="grain", depth_reverb=True, reverb_wet=0.6, reverb_time=3.0,
+                   reverb_dry_duck=0.2)            # also duck the dry signal at depth
+
+# --- depth → low-pass (darker/heavier the deeper it goes) ---
+bm.audio_video_out(mode="play", depth_lpf=True, lpf_range=(18000, 500))
+
+# --- depth → stereo width (wider the deeper it goes) ---
+bm.audio_video_out(mode="play", depth_width=True, width_range=(1.0, 2.2))
+
+# --- depth → detune (the image shimmers more the deeper it goes) ---
+bm.audio_video_out(mode="play", depth_detune=True, detune_cents=25)
+
+# --- depth → grain length (grains lengthen and time smears the deeper it goes) ---
+bm.audio_video_out(mode="grain", grain_dur_range=(0.04, 0.3))
+
+# --- Everything combined (resonance + darkness + width + long grains all deepen together) ---
+bm.audio_video_out(mode="grain",
+                   depth_reverb=True, reverb_wet=0.5,
+                   depth_lpf=True, lpf_range=(16000, 800),
+                   depth_width=True,
+                   grain_dur_range=(0.05, 0.25),
+                   name_attr="full")               # → _wAudio-grain-dRev-dLPF-dWid-dGrain_full
+```
+
+For the meaning of each depth effect and its extra parameters, see "now-depth audio modulation" under [audio_render](#python-only-audio-rendering-audio_render). `name_attr` adds an arbitrary identifier on top of the automatic tag.
 
 ##### Improved SuperCollider output: scd_out_v2
 For real-time / live use, use the improved SuperCollider export. Instead of the legacy CSV + 30Hz control loop, it writes the interpolated playback positions and balance information as a multi-channel float32 WAV (control track), and the SC side plays back position-driven via `BufRd`. Click noise and the re-synchronization drift of periodic maneuvers are eliminated.
@@ -930,6 +1128,8 @@ bm.applyTimeBlur(100)                              # blur across seams
 bm.arrayExtract(array.shape[0], array.shape[0]*2)  # take the middle
 ```
 
+![arrayExtract (3D plot example)](images/doc_arrayExtract_3dplot.gif)
+
 ## `arrayReflection`
 Appends a time-reversed copy of `data`, creating a there-and-back (mirror) structure. No parameters.
 
@@ -938,6 +1138,8 @@ Appends a time-reversed copy of `data`, creating a there-and-back (mirror) struc
 bm.addTrans(150)
 bm.arrayReflection()   # 300-frame round trip
 ```
+
+![arrayReflection (3D plot example)](images/doc_arrayReflection_3dplot.gif)
 
 ## `wide_expandB`
 Extrapolates the motion of the edge slits to extend the spatial dimension of `data` by `add_size` on both sides. Used to prepare wide/panorama output larger than the input video.
@@ -954,6 +1156,8 @@ Extrapolates the motion of the edge slits to extend the spatial dimension of `da
 bm.addCycleTrans(300)
 bm.wide_expandB(add_size=1920, z_offset=1)
 ```
+
+![wide_expandB (3D plot example)](images/doc_wide_expandB_3dplot.gif)
 
 ## `interpolation_append`
 Smoothly interpolates between the tail of `data` and the head of `maneuver` over `connection_num` frames, then concatenates.
@@ -1011,6 +1215,8 @@ Generates a slit-scan plane (fixed spatial position, sequential time). Only usab
 bm.addSlicePlane(frame_nums=1, xypoint=0.5, full_range=True)
 ```
 
+![addSlicePlane (3D plot example)](images/doc_addSlicePlane_3dplot.png)
+
 ## `addFreeze`
 Duplicates the last cross-section for `frame_nums` frames (a complete freeze).
 
@@ -1023,6 +1229,7 @@ bm.addCycleTrans(240)
 bm.addFreeze(60)
 ```
 
+![addFreeze (3D plot example)](images/doc_addFreeze_3dplot.gif)
 
 ## `preExtend`
 Extends the head by duplicating the first frame `addframe` times (a frozen intro).
@@ -1030,6 +1237,7 @@ Extends the head by duplicating the first frame `addframe` times (a frozen intro
 ### Parameters
 - `addframe`(int): Number of frames to add.
 
+![preExtend (3D plot example)](images/doc_preExtend_3dplot.gif)
 
 ## `addExtend`
 Extends the tail by duplicating the last frame `addframe` times (time rate becomes 0). Nearly identical to `addFreeze`, plus a spatial mirror option.
@@ -1038,6 +1246,7 @@ Extends the tail by duplicating the last frame `addframe` times (time rate becom
 - `addframe`(int): Number of frames to add.
 - `flip`(bool, optional, default: `False`): Extend with a spatially mirrored cross-section.
 
+![addExtend (3D plot example)](images/doc_addExtend_3dplot.gif)
 
 ## `addCylinderCut`
 Cuts the XYT cube with a cylinder surface and adds one closed-loop frame whose start and end coincide. Samples a circle/ellipse on the (space, time) plane with space=sin(θ), time=cos(θ).
@@ -1065,6 +1274,8 @@ Cuts the XYT cube along the unfolded four edges of a box, producing one closed-l
 - `center_pos`(float, optional, default: `0.5`): Spatial center (0-1).
 - `time_scale`(float, optional, default: `1.0`): Time-axis scale. 1.0 = square unfold.
 - `output_width`(int, optional, default: `None`): Number of output slits. None = computed from the perimeter.
+
+![addBoxUnfoldCut (3D plot example)](images/doc_addBoxUnfoldCut_3dplot.png)
 
 ## `addTrans`
 
@@ -1145,6 +1356,7 @@ bm.addTrans(100)
 bm.addKeepSpeedTrans(200)   # coast on at the terminal velocity of addTrans
 ```
 
+![addKeepSpeedTrans (3D plot example)](images/doc_addKeepSpeedTrans_3dplot.gif)
 
 ## `addInsertKeepSpeedTrans`
 An extension of `addKeepSpeedTrans`. Computes the intersection of the tail velocity of `data` and the head velocity of `after_array`, inserts bridging frames, then concatenates `after_array` (which is auto time-slid).
@@ -1171,6 +1383,7 @@ Expands `scan_nums` by `wide_scale`, then transitions over `frame_nums` frames t
 bm.addWideKeyframeTrans(300, key_array=[(1920, 0), (3840, 600)], wide_scale=3)
 ```
 
+![addWideKeyframeTrans (3D plot example)](images/doc_addWideKeyframeTrans_3dplot.gif)
 
 ## `addInterpolation` 
 
@@ -1281,6 +1494,7 @@ A randomized rootingA where each parameter is given as a range. Reproducible wit
 bm.rootingA_interporation_RANDOM((300, 900), interval_nums_range=(0, 120), loop_num=4, seed=42)
 ```
 
+![rootingA_interporation_RANDOM (3D plot example)](images/doc_rootingA_interporation_RANDOM_3dplot.gif)
 
 ## `rootingAA_interporation`
 A rootingA variant that keeps the same spatial start/end point, producing a loop-like motion anchored on screen. Params: `FRAME_NUMS`(int), `loop_num`(int, default 2), `axis_first_p`(int), `speed_round`(bool).
@@ -1290,9 +1504,12 @@ A rootingA variant that keeps the same spatial start/end point, producing a loop
 ## `rootingB_interporation`
 With the axis fixed (`axis_fix_p`), the cross-section topples over continuously like a domino rolling down a slope. Params: `FRAME_NUMS`(int), `loop_num`(int, default 1), `axis_fix_p`(int: 0/1).
 
+![rootingB_interporation (3D plot example)](images/doc_rootingB_interporation_3dplot.gif)
+
 ## `rooting4C_interporation`
 A 4-pattern connected preset (two forward + two axis variants). Single parameter: `FRAME_NUMS`(int). Total = `FRAME_NUMS×4`.
 
+![rooting4C_interporation (3D plot example)](images/doc_rooting4C_interporation_3dplot.gif)
 
 ## `addCycleTrans`
 
@@ -1377,6 +1594,7 @@ A fixed-width (`width×wide_scale`) wide cycle trans. Starts rotating from a 90-
 - `extra_degree`(int, optional, default: `0`): Angle offset.
 - `speed_round`(bool, optional, default: `True`): Eased rotation.
 
+![addFixWideCycleTrans (3D plot example)](images/doc_addFixWideCycleTrans_3dplot.gif)
 
 ## `addWaveTrans`
 
@@ -1455,6 +1673,7 @@ bm.applyTimeFlowKeepingExtend(90, fade=True, intro=True, outro=False, fade_type=
 
 > If you need to land exactly on a specific time position (z), use the coordinate-based versions that have zero accumulated error: [`applyTimeFlowKeepingExtend_CoodinateBase_Intro`](#applytimeflowkeepingextend_coodinatebase_intro) / [`applyTimeFlowKeepingExtend_CoodinateBase_Outtro`](#applytimeflowkeepingextend_coodinatebase_outtro).
 
+![applyTimeFlowKeepingExtend (3D plot example)](images/doc_applyTimeFlowKeepingExtend_3dplot.gif)
 
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Intro`
 Coordinate-based intro extension. Prepends `num_frames` linearly interpolated frames so that the head starts exactly at time `target_z`. The per-slit step is computed as `(data[0,slit,1] - target_z) / num_frames`, guaranteeing zero accumulated error.
@@ -1468,6 +1687,7 @@ Coordinate-based intro extension. Prepends `num_frames` linearly interpolated fr
 bm.applyTimeFlowKeepingExtend_CoodinateBase_Intro(target_z=0, num_frames=150)
 ```
 
+![applyTimeFlowKeepingExtend_CoodinateBase_Intro (3D plot example)](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Intro_3dplot.gif)
 
 ## `applyTimeFlowKeepingExtend_CoodinateBase_Outtro`
 Coordinate-based outro extension. Appends `num_frames` linearly interpolated frames so that the tail lands exactly on time `target_z`, with zero accumulated error.
@@ -1476,6 +1696,7 @@ Coordinate-based outro extension. Appends `num_frames` linearly interpolated fra
 - `target_z`(float): Time coordinate the new last frame should reference.
 - `num_frames`(int): Number of extension frames.
 
+![applyTimeFlowKeepingExtend_CoodinateBase_Outtro (3D plot example)](images/doc_applyTimeFlowKeepingExtend_CoodinateBase_Outtro_3dplot.gif)
 
 ## `applyTimeForward`
 Adds a forward flow of time to the whole array: frame k gets `slide_time × k` added to its time coordinate.
@@ -1601,8 +1822,12 @@ bm.applyTimeSlide(0)          # align the head with the start of the input
 bm.applyTimeSlide(3600, -1)   # align the tail with frame 3600
 ```
 
+![applyTimeSlide (3D plot example)](images/doc_applyTimeSlide_3dplot.gif)
+
 ## `applyInOutGapFix`
 Distributes the head/tail time difference linearly over all frames to cancel it (seamless-loop helper). No parameters.
+
+![applyInOutGapFix (3D plot example)](images/doc_applyInOutGapFix_3dplot.gif)
 
 ## `applyInFix`
 Makes the head frame's time coordinates match `target_z_array`, blending linearly while keeping the tail fixed.
@@ -1648,6 +1873,7 @@ Applies a box blur along the frame axis to the spatial coordinates (`data[:,:,0]
 ### Parameters
 - `bl_time`(int): Blur kernel size in frames.
 
+![applySpaceBlur (3D plot example)](images/doc_applySpaceBlur_3dplot.gif)
 
 ## `applyTimeBlur`
 Applies a box blur along the frame axis to the time coordinates (`data[:,:,1]`), smoothing temporal motion. Internally pads via `timeFlowKeepingExtend`, so the edges keep their velocity.
@@ -1655,6 +1881,7 @@ Applies a box blur along the frame axis to the time coordinates (`data[:,:,1]`),
 ### Parameters
 - `bl_time`(int): Blur kernel size in frames.
 
+![applyTimeBlur (3D plot example)](images/doc_applyTimeBlur_3dplot.gif)
 
 ## `applyCustomeBlur`
 Applies a weighted-average blur only to the specified frame range — useful to smooth local kinks such as junctions.
@@ -1664,6 +1891,7 @@ Applies a weighted-average blur only to the specified frame range — useful to 
 - `bl_time`(int): Blur kernel size.
 - `dim_num`(int, optional, default: `1`): `1` = time, `0` = space.
 
+![applyCustomeBlur (3D plot example)](images/doc_applyCustomeBlur_3dplot.gif)
 
 ## `applyLoopBlur`
 Triples `data` by concatenation and blurs across it, yielding a blur continuous across loop boundaries (use `arrayExtract` to take out the middle third afterwards).
@@ -1678,12 +1906,16 @@ bm.applyLoopBlur(0, 100)
 bm.arrayExtract(n, n*2)
 ```
 
+![applyLoopBlur (3D plot example)](images/doc_applyLoopBlur_3dplot.gif)
+
 ## `applyConnectLoopBlur`
 Blurs only the loop junction (the `connect_frame` frames around head and tail). Data length is unchanged.
 
 ### Parameters
 - `sblur`(int) / `tblur`(int): Blur kernel sizes.
 - `connect_frame`(int, optional, default: `100`): Range around the junction.
+
+![applyConnectLoopBlur (3D plot example)](images/doc_applyConnectLoopBlur_3dplot.gif)
 
 ## `applyPointBlur`
 Blurs only a region centered at a given frame.
@@ -1693,9 +1925,12 @@ Blurs only a region centered at a given frame.
 - `sblur`(int) / `tblur`(int): Blur kernel sizes.
 - `range_frame`(int, optional, default: `100`): Half range around the center.
 
+![applyPointBlur (3D plot example)](images/doc_applyPointBlur_3dplot.gif)
+
 ## `applySpaceFlip`
 Flips the spatial coordinates left-right (or top-bottom for horizontal slits). No parameters.
 
+![applySpaceFlip (3D plot example)](images/doc_applySpaceFlip_3dplot.gif)
 
 ## `applySpaceFlat`
 Resets the spatial coordinates to the initial sequence (0..scan_nums-1), removing spatial distortion while keeping the time warp. No parameters.
@@ -1706,12 +1941,15 @@ bm.addCycleTrans(300)
 bm.applySpaceFlat()   # keep only the time distortion
 ```
 
+![applySpaceFlat (3D plot example)](images/doc_applySpaceFlat_3dplot.gif)
 
 ## `zCenterArange`
 Shifts the whole data so the midpoint of min/max time lands on the input-video center (`count/2`, or a custom value). NaN-safe.
 
 ### Parameters
 - `center_time_frame`(int, optional, default: `None`): Custom center. None = `count/2`.
+
+![zCenterArange (3D plot example)](images/doc_zCenterArange_3dplot.gif)
 
 ## `zArange`
 Slides the whole data so that the mean time of the specified frame lands on the target time. Unlike `zCenterArange` (which uses the overall min/max midpoint), this anchors on a specific frame.
@@ -1720,8 +1958,12 @@ Slides the whole data so that the mean time of the specified frame lands on the 
 - `target_frame`(int): Frame index in `data` used as the anchor.
 - `center_time_frame`(float, optional, default: `None`): Target time. None = `count/2`.
 
+![zArange (3D plot example)](images/doc_zArange_3dplot.gif)
+
 ## `zStartArange`
 Shifts the whole data so the minimum time coordinate becomes 0. No parameters.
+
+![zStartArange (3D plot example)](images/doc_zStartArange_3dplot.gif)
 
 ## `zPointCheck`
 Checks that the time coordinates fit within the valid range (0..`count`) and auto-adjusts if not: shifts when possible, otherwise scales the time axis. Use as a safety check before rendering.
@@ -1735,11 +1977,15 @@ bm.zPointCheck()
 bm.transprocess()
 ```
 
+![zPointCheck (3D plot example)](images/doc_zPointCheck_3dplot.gif)
+
 ## `zPointCheckandReflect`
 Instead of shifting/scaling, reflects out-of-range time coordinates back at the boundaries.
 
 ### Parameters
 - `subtract_count`(int, optional, default: `0`): Upper-side margin.
+
+![zPointCheckandReflect (3D plot example)](images/doc_zPointCheckandReflect_3dplot.gif)
 
 ## `spline_interpolate`
 Generic helper that interpolates a list of keyframe values (spread evenly across the spatial range) with spline/linear/bezier, returning values at positions `x`. Used internally by `applyTimebyKeyframetoSpace`.
