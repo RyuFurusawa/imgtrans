@@ -197,6 +197,69 @@ class FrameProcMixin:
 
         return len(slits)
 
+    @staticmethod
+    def _yuv10_cols_to_rgb48(y, cb, cr):
+        """10bit limited-range YUV → 16bit RGB 変換 (抽出済みの列/行のみ)。
+        係数は swscale の既定 (BT.601) に合わせる。既存の rgb48le パスは
+        入力の colorspace タグに関わらず swscale 既定行列で変換されており、
+        出力側 ffmpeg (rawvideo rgb48 → yuv) も同じ既定行列で戻すため、
+        ここも 601 に揃えることで既存出力とほぼ一致する
+        (実測 max 177/65535、残差はクロマ補間方式の差由来)。"""
+        yf  = (y.astype(np.float32)  -  64.0) * (65535.0 / 876.0)
+        cbf = (cb.astype(np.float32) - 512.0) * (65535.0 / 896.0)
+        crf = (cr.astype(np.float32) - 512.0) * (65535.0 / 896.0)
+        r = yf + 1.402 * crf
+        g = yf - 0.344136 * cbf - 0.714136 * crf
+        b = yf + 1.772 * cbf
+        rgb = np.stack((r, g, b), axis=-1)
+        return np.clip(rgb, 0, 65535).astype(np.uint16)
+
+    def _process_frame_col_rgb(
+        self, frame, frame_index, frame_to_indices, wr_arrays, images, gap=0, slit_step=1):
+        """_process_frame の列先抽出版 (PyAV RGB経由パス用)。
+        フレーム全面を rgb48le 変換せず、このフレームが参照される
+        列(縦スキャン)/行(横スキャン)だけを YUV プレーンから抜き出して
+        RGB 変換する。addSlicePlane(full_range=True) のように
+        1ソースフレームあたりの参照スリット数が少ない場合、
+        全画面 RGB 変換 (フレームあたり数十ms) をほぼゼロにできる。
+        images への書き込み配置は _process_frame と同一。"""
+        slits = frame_to_indices.get(frame_index, [])
+        if not slits:
+            print("処理するスリットなし", frame_index)
+            return 0
+        # 420系10bit は chroma 高さが半分なので 422 に揃える (yuv-native と同じ)
+        if frame.format.name != "yuv422p10le":
+            frame = frame.reformat(format="yuv422p10le")
+        w = frame.width
+        y_img  = np.frombuffer(frame.planes[0], dtype=np.uint16).reshape(
+            frame.planes[0].height, frame.planes[0].line_size // 2)[:, :w]
+        cb_img = np.frombuffer(frame.planes[1], dtype=np.uint16).reshape(
+            frame.planes[1].height, frame.planes[1].line_size // 2)[:, :w // 2]
+        cr_img = np.frombuffer(frame.planes[2], dtype=np.uint16).reshape(
+            frame.planes[2].height, frame.planes[2].line_size // 2)[:, :w // 2]
+
+        i_arr = np.array([i for i, _ in slits], dtype=np.int32)
+        p_arr = np.array([p for _, p in slits], dtype=np.int32)
+        src_coords = wr_arrays[i_arr, p_arr, 0].astype(np.int32)
+
+        if self.scan_direction % 2 == 1:
+            # 縦スキャン: 列抽出 (422 の chroma は水平半幅 → x//2)
+            y_c  = y_img[::slit_step, src_coords]        # (H_eff, n)
+            cb_c = cb_img[::slit_step, src_coords // 2]
+            cr_c = cr_img[::slit_step, src_coords // 2]
+            rgb = self._yuv10_cols_to_rgb48(y_c, cb_c, cr_c)  # (H_eff, n, 3)
+            for k in range(len(i_arr)):
+                images[i_arr[k] + gap, :, p_arr[k]] = rgb[:, k]
+        else:
+            # 横スキャン: 行抽出 (chroma は水平半幅 → repeat で全幅化)
+            y_r  = y_img[src_coords, ::slit_step]        # (n, W_eff)
+            cb_r = np.repeat(cb_img[src_coords], 2, axis=1)[:, :w][:, ::slit_step]
+            cr_r = np.repeat(cr_img[src_coords], 2, axis=1)[:, :w][:, ::slit_step]
+            rgb = self._yuv10_cols_to_rgb48(y_r, cb_r, cr_r)  # (n, W_eff, 3)
+            images[i_arr + gap, p_arr, :] = rgb
+
+        return len(slits)
+
     # ====================================================================
     # transprocess 用ヘルパー群 (2026-03 追加)
     # ====================================================================

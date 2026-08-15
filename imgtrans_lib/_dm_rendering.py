@@ -715,9 +715,10 @@ class RenderingMixin:
             print("auto_fps_proxy: 見積もり/準備に失敗、通常レンダリングを続行:", e)
             return False
 
-    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,xy_trans_out=False,render_mode=0,title_atr:str=None,title_replace:str=None,tmp_para_images=False,del_data=True,auto_memory_clear=False,memory_report=False,tmp_save = False,render_clip_start=0,render_clip_end=None,tmp_path_base = None,slit_step=1,scan_step=1,use_pyav=False,auto_fps_proxy=True):
+    def new_transprocess(self,separate_num=None,sep_start_num=0,sep_end_num=None,out_type=1,xy_trans_out=False,render_mode=0,title_atr:str=None,title_replace:str=None,tmp_para_images=False,del_data=True,auto_memory_clear=False,memory_report=False,tmp_save = False,render_clip_start=0,render_clip_end=None,tmp_path_base = None,slit_step=1,scan_step=1,use_pyav=False,auto_fps_proxy=True,col_rgb=None):
         # slit_step: スリットレングス縮小 (1=等倍, 2=1/2, 3=1/3, 4=1/4)
         # scan_step: スキャンナムズ間引き (1=等倍, 2=1/2, 3=1/3, 4=1/4) — self.data非破壊
+        # col_rgb: 列先抽出RGBパイプライン (None=自動判定, True=強制ON, False=OFF)
         if slit_step < 1: slit_step = 1
         if scan_step < 1: scan_step = 1
         eff_height = int(self.height) // slit_step
@@ -850,6 +851,28 @@ class RenderingMixin:
             print("🎨 YUV-native pipeline: ON (RGB変換スキップ、色精度最大)")
         else:
             print("🎨 YUV-native pipeline: OFF (RGB経由)")
+
+        # === 列先抽出RGBパイプライン判定 (col_rgb) ===
+        # RGB経由の PyAV パスで、1ソースフレームから参照されるスリット数が
+        # 少ない場合 (addSlicePlane full_range 等)、フレーム全面の rgb48le
+        # 変換をやめ、必要な列/行だけ YUV プレーンから抜き出して RGB 変換する。
+        # 巨大な長尺ソースでは全画面 RGB 変換がデコードと同等以上のコストの
+        # ため、これを省くとほぼデコード速度の下限までレンダリングが速くなる。
+        # YUV-native が ON のときは不要 (そちらが優先)。
+        use_col_rgb = False
+        if (col_rgb is not False
+                and not use_yuv_native
+                and self.is_morethan_8bit
+                and self.container is not None       # PyAVが必要
+                and getattr(self, "input_rotation", 0) == 0  # 回転はRGB経由で適用
+                and len(self.depth_to_sel_recfps) == 0):     # 複数fpsパスは対象外
+            z_all = wr_array[:, :, 1].ravel()
+            avg_refs = z_all.size / max(np.unique(z_all).size, 1)
+            # 自動判定: 平均参照スリット数が少ないときだけ有効
+            # (多い場合は swscale の全画面一括変換の方が速い)
+            use_col_rgb = True if col_rgb else avg_refs <= 64
+        if use_col_rgb:
+            print("🎯 col-extract RGB pipeline: ON (参照列のみYUV→RGB変換)")
 
         # === 単一シンクへのストリーミング判定 ===
         # sepVideoOut==0 (既定) で複数セグメントの場合、従来は生データ全量を
@@ -1485,6 +1508,16 @@ class RenderingMixin:
                                         frame_to_indices,
                                         wr_arrays,
                                         img_y, img_cb, img_cr,
+                                        slit_step=slit_step,
+                                    )
+                                elif use_col_rgb:
+                                    # === 列先抽出RGB: 参照列だけYUV抽出→RGB変換 ===
+                                    processed = self._process_frame_col_rgb(
+                                        frame,
+                                        frame_index,
+                                        frame_to_indices,
+                                        wr_arrays,
+                                        images,
                                         slit_step=slit_step,
                                     )
                                 else:
