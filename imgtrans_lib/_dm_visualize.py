@@ -29,6 +29,7 @@ from matplotlib.ticker import MaxNLocator, FixedLocator, FixedFormatter
 from ._utils import (
     frames_to_min_sec,
     append_to_logfile,
+    caller_args_str,
     addCsvHeader,
     calculate_parallel_perpendicular,
 )
@@ -42,7 +43,16 @@ class VisualizeMixin:
         if len(self.out_name_attr) > 100:#文字数が255を超えるとエラーとなる問題
             self.out_name_attr = self.out_name_attr[:97] + "..."+str(self.log)
         append_to_logfile(str(self.log)+":"+module_name_attr)
-        if self.auto_visualize_out : 
+        # 呼び出し元メソッドの引数を「既定値のままのものも含めて」全部記録する。
+        # module_name_attr は呼び出し側が手で組み立てており、一部の引数しか
+        # 載っていないため、取りこぼしをここで補う。
+        _a = caller_args_str(2)
+        if _a:
+            append_to_logfile("   args: " + _a)
+        # auto_visualize_out=False にすると工程ごとの 2dplot を作らない。
+        # new_transprocess() 内の maneuver_2dplot はゲートしていないので、
+        # 最後の1枚 (最新状態 + 分割の切れ目つき) は False でも残る。
+        if self.auto_visualize_out :
             if self.default_debugmode : self.maneuver_2dplot(debugmode=True)
             else : self.maneuver_2dplot()
 

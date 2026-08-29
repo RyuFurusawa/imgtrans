@@ -170,10 +170,83 @@ def addCsvHeader(d):
     d = np.vstack((d,np.array(column_footer)))
     return d
 
+def _short_repr(v, maxlen=70):
+    """ログ用に値を短く文字列化する。巨大な配列をそのまま書かないための保険。"""
+    try:
+        if isinstance(v, np.ndarray):
+            return f"ndarray{tuple(v.shape)}"
+    except Exception:
+        pass
+    if isinstance(v, (list, tuple)) and len(v) > 8:
+        return f"{type(v).__name__}(len={len(v)})"
+    if isinstance(v, dict) and len(v) > 8:
+        return f"dict(len={len(v)})"
+    if callable(v):
+        return getattr(v, "__name__", "callable") + "()"
+    try:
+        r = repr(v)
+    except Exception:
+        return f"<{type(v).__name__}>"
+    return r if len(r) <= maxlen else r[:maxlen - 3] + "..."
+
+
+def caller_args_str(depth=2):
+    """呼び出し元メソッドの引数を "name=value" で並べて返す。
+
+    maneuver_log() の呼び出し側は引数を手で文字列に埋め込んでいるため、
+    記録から漏れる引数が多かった。フレームを1つ遡って、宣言されている
+    引数名 (co_varnames の先頭 argcount+kwonlyargcount 個) と、その時点の
+    f_locals の値を突き合わせることで、既定値のままの引数も含めて全部拾う。
+    *args / **kwargs も付いていれば併せて記録する。
+    """
+    try:
+        f = sys._getframe(depth)
+    except ValueError:
+        return ""
+    try:
+        code = f.f_code
+        n = code.co_argcount + code.co_kwonlyargcount
+        names = list(code.co_varnames[:n])
+        # *args / **kwargs
+        idx = n
+        if code.co_flags & 0x04:   # CO_VARARGS
+            names.append(code.co_varnames[idx]); idx += 1
+        if code.co_flags & 0x08:   # CO_VARKEYWORDS
+            names.append(code.co_varnames[idx])
+        loc = f.f_locals
+        parts = [f"{nm}={_short_repr(loc[nm])}"
+                 for nm in names if nm != "self" and nm in loc]
+        return ", ".join(parts)
+    except Exception:
+        return ""
+
+
 #再生断面軌道の編集のログを出力。2023.10.19 added
+_logfile_warned = False
+
 def append_to_logfile(text_to_append):
+    """maneuverlog.txt に追記する。
+
+    書き込みに失敗しても**例外を投げない**。2026-08-29、外付けボリューム上で
+    レンダリング完了直後に PermissionError [Errno 1] Operation not permitted が
+    出て、10分かけた書き出しが最後のログ1行で失われた。
+    EPERM は macOS の TCC (外部ボリュームへのアクセス許可) で出ることがあり、
+    ログはあくまで副次的な記録なので、失敗しても処理を続ける。
+    """
+    global _logfile_warned
+    try:
         with open("maneuverlog.txt", "a") as file:
             file.write(text_to_append + "\n")
+    except OSError as e:
+        if not _logfile_warned:
+            print(f"⚠ maneuverlog.txt に書けません ({type(e).__name__}: {e.strerror})。"
+                  f"ログは省略して処理を続けます。")
+            print(f"   cwd = {os.getcwd()}")
+            if getattr(e, "errno", None) == 1:
+                print("   Errno 1 は macOS のアクセス許可 (TCC) が原因のことが多い。"
+                      "システム設定 > プライバシーとセキュリティ > フルディスクアクセス に"
+                      "実行元のターミナルを追加し、ターミナルを再起動する。")
+            _logfile_warned = True
 
 def bezier_interpolation(p0, p1, p2, t):
     return (1-t)**2 * p0 + 2*(1-t)*t * p1 + t**2 * p2
