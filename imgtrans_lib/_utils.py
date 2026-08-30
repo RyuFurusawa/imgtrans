@@ -237,16 +237,27 @@ def append_to_logfile(text_to_append):
     try:
         with open("maneuverlog.txt", "a") as file:
             file.write(text_to_append + "\n")
-    except OSError as e:
-        if not _logfile_warned:
-            print(f"⚠ maneuverlog.txt に書けません ({type(e).__name__}: {e.strerror})。"
-                  f"ログは省略して処理を続けます。")
-            print(f"   cwd = {os.getcwd()}")
-            if getattr(e, "errno", None) == 1:
-                print("   Errno 1 は macOS のアクセス許可 (TCC) が原因のことが多い。"
-                      "システム設定 > プライバシーとセキュリティ > フルディスクアクセス に"
-                      "実行元のターミナルを追加し、ターミナルを再起動する。")
-            _logfile_warned = True
+    except BaseException as e:
+        # ここで何が起きても絶対に外へ投げない。
+        # 2026-08-29、警告を出す側で os.getcwd() を呼んだところ、それ自体が
+        # EPERM で落ちて例外が抜けた (cwd がアクセス不能になると getcwd も失敗する)。
+        try:
+            if not _logfile_warned:
+                _logfile_warned = True
+                try:
+                    detail = f"{type(e).__name__}: {e}"
+                except BaseException:
+                    detail = "unknown error"
+                print(f"⚠ maneuverlog.txt に書けません ({detail})。"
+                      f"ログは省略して処理を続けます。")
+                if getattr(e, "errno", None) == 1:
+                    print("   Errno 1 (Operation not permitted) は macOS のアクセス許可 "
+                          "(TCC) が原因のことが多い。cwd 自体がアクセス不能になっている"
+                          "可能性もある。システム設定 > プライバシーとセキュリティ > "
+                          "フルディスクアクセス に実行元のターミナルを追加し、"
+                          "ターミナルを再起動する。")
+        except BaseException:
+            pass
 
 def bezier_interpolation(p0, p1, p2, t):
     return (1-t)**2 * p0 + 2*(1-t)*t * p1 + t**2 * p2
