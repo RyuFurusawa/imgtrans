@@ -929,7 +929,7 @@ print(bm.data.shape)
     - 時空間統合的な動きを加える関数
         - [`addFlat`](#addflat): フラットな配列を追加。引数: `frame_nums`(int), `z_pos`(int), `z_autofit`(bool), `prepend`(bool), `flip`(bool)。
         - [`addFreeze`](#addfreeze): 最終列の配列を指定フレーム数分生成して加える。引数: `frame_nums`(int)。
-        - [`addSlicePlane`](#addsliceplane): 指定した空間位置で断面フレームを追加。引数: `frame_nums`(int), `xypoint`(float: 空間位置0-1), `full_range`(bool), `z_start`(float), `z_end`(float)。
+        - [`addSlicePlane`](#addsliceplane): 指定した空間位置で断面フレームを追加。引数: `frame_nums`(int), `xypoint`(float: 空間位置0-1), `full_range`(bool), `z_start`(float), `z_end`(float), `aspect_mode`(str: unfix/fix), `aspect_ratio`(float), `time_frames`(int)。
         - **3D幾何学曲面カット** — XYT空間を幾何学曲面で切り出し、始点と終点が一致するループ断面を1フレームとして追加する関数群。
             - [`addCylinderCut`](#addcylindercut): 円筒面カット — (空間, 時間)平面上に円/楕円を描くループ断面。引数: `center_time`(float: 中心の時間座標), `center_pos`(float: 空間中心0-1, デフォルト0.5), `time_scale`(float: 時間方向倍率, デフォルト1.0), `phase`(float: 開始角ラジアン, デフォルト0.0), `output_width`(int: 出力スリット数, None=自動)。
             - [`addBoxUnfoldCut`](#addboxunfoldcut): XYT直方体の4辺を展開したループ断面 — 通常フレーム→右端スリットスキャン→反転フレーム→左端スリットスキャン。引数: `center_time`(float), `center_pos`(float, デフォルト0.5), `time_scale`(float, デフォルト1.0), `output_width`(int, None=自動)。
@@ -1167,13 +1167,22 @@ bm.addFlat(60, z_pos=1200, z_autofit=False)  # 入力の1200フレーム目で1�
 ### 引数
 - `frame_nums`(int, optional, default: `1`): 追加するフレーム数。
 - `xypoint`(float, optional, default: `0.5`): スリット位置（0.0〜1.0、scan_numsに対する比率）。
-- `full_range`(bool, optional, default: `False`): `True`で時間軸を入力映像全フレーム(0〜count)に拡張。
-- `z_start`(float, optional): 時間範囲の開始フレームを直接指定。`full_range`より優先。
-- `z_end`(float, optional): 時間範囲の終了フレーム。
+- `full_range`(bool, optional, default: `False`): `True`で時間軸を入力映像全フレーム(0〜count)に拡張。`aspect_mode="fix"`で`time_frames`を省略するのと同じ意味になる。
+- `z_start`(float, optional): サンプリング元の時間範囲の開始フレームを直接指定。`full_range`/`time_frames`より優先。
+- `z_end`(float, optional): サンプリング元の時間範囲の終了フレーム。
+- `aspect_mode`(str, optional, default: `"unfix"`): `"unfix"`— 出力画像の縦横比は積み重ねる時間範囲のフレーム数にそのまま従う（従来の挙動、1フレーム=1ピクセル）。`"fix"`— 出力画像の縦横比を`aspect_ratio`で固定し、サンプリング元の時間範囲をその比率になる枚数へ均等にリサンプルする（線形補間はせず最寄りのソースフレームへ丸める）。
+- `aspect_ratio`(float, optional): `aspect_mode="fix"`のとき必須（> 0）。「積み重ね軸のピクセル数 ÷ 映像そのままの軸のピクセル数」。スリット方向で積み重ね軸と映像そのままの軸が入れ替わるため向きも入れ替わる: `sd=0`（横スリット）は 縦(積み重ね)÷横(映像幅)、`sd=1`（縦スリット）は 横(積み重ね)÷縦(映像高さ)。
+- `time_frames`(int, optional): `aspect_mode="fix"`のとき、サンプリング元に使う時間範囲（フレーム数、0起点）。`None`なら入力映像の全尺(`self.count`)。`z_start`/`z_end`があればそちらが優先。
 
 ### 使用例
 ```python
 bm.addSlicePlane(frame_nums=1, xypoint=0.5, full_range=True)
+
+# 出力を「映像の実サイズ 1 : 積み重ね 2」の横長に固定して、全尺を均等にリサンプル
+bm.addSlicePlane(frame_nums=1, xypoint=0.5, aspect_mode="fix", aspect_ratio=2.0)
+
+# 先頭 300 フレームだけを、正方形になるようにリサンプル
+bm.addSlicePlane(frame_nums=1, xypoint=0.5, aspect_mode="fix", aspect_ratio=1.0, time_frames=300)
 ```
 
 ![addSlicePlane（3dプロット例）](images/doc_addSlicePlane_3dplot.png)

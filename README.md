@@ -981,7 +981,7 @@ print(bm.data.shape)
     - **Functions that add space-time integrated motion**
         - [`addFlat`](#addflat): Adds a flat array. Params: `frame_nums`(int), `z_pos`(int), `z_autofit`(bool), `prepend`(bool), `flip`(bool).
         - [`addFreeze`](#addfreeze): Creates and adds an array of the final row for the number of frames specified. Params: `frame_nums`(int).
-        - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis. Params: `frame_nums`(int), `xypoint`(float: spatial position 0-1), `full_range`(bool), `z_start`(float), `z_end`(float).
+        - [`addSlicePlane`](#addsliceplane): Adds a cross-sectional frame sliced along the time axis. Params: `frame_nums`(int), `xypoint`(float: spatial position 0-1), `full_range`(bool), `z_start`(float), `z_end`(float), `aspect_mode`(str: unfix/fix), `aspect_ratio`(float), `time_frames`(int).
         - **3D Geometric Surface Cuts** — Cut XYT space with geometric surfaces to produce a single closed-loop frame.
             - [`addCylinderCut`](#addcylindercut): Cylinder cut — a circular/elliptic loop on the (space, time) plane. Params: `center_time`(float: time center in frames), `center_pos`(float: spatial center 0-1, default 0.5), `time_scale`(float: time-axis scale, default 1.0), `phase`(float: start angle in radians, default 0.0), `output_width`(int: number of output slits, None=auto).
             - [`addBoxUnfoldCut`](#addboxunfoldcut): Unfolded-box loop cut — normal frame → right-edge slit scan → flipped frame → left-edge slit scan. Params: `center_time`(float), `center_pos`(float, default 0.5), `time_scale`(float, default 1.0), `output_width`(int, None=auto).
@@ -1207,12 +1207,21 @@ Generates a slit-scan plane (fixed spatial position, sequential time). Only usab
 ### Parameters
 - `frame_nums`(int, optional, default: `1`): Number of frames.
 - `xypoint`(float, optional, default: `0.5`): Slit position (0.0-1.0, ratio of scan_nums).
-- `full_range`(bool, optional, default: `False`): Extend the time axis to the full input video (0..count).
-- `z_start`(float, optional) / `z_end`(float, optional): Directly specify the time range; takes precedence over `full_range`.
+- `full_range`(bool, optional, default: `False`): Extend the time axis to the full input video (0..count). Equivalent to omitting `time_frames` when `aspect_mode="fix"`.
+- `z_start`(float, optional) / `z_end`(float, optional): Directly specify the source time range to sample; takes precedence over `full_range`/`time_frames`.
+- `aspect_mode`(str, optional, default: `"unfix"`): `"unfix"` — the output image's aspect ratio simply follows the frame count of the stacked time range (legacy behavior, 1 frame = 1 pixel). `"fix"` — fixes the output aspect ratio to `aspect_ratio`, evenly resampling the source time range into that many samples (no interpolation; each sample snaps to the nearest source frame).
+- `aspect_ratio`(float, optional): Required when `aspect_mode="fix"` (> 0). "Stack-axis pixel count ÷ as-shot-axis pixel count." Which axis is which swaps with the slit direction: `sd=0` (horizontal slit) is height(stack) ÷ width(as-shot); `sd=1` (vertical slit) is width(stack) ÷ height(as-shot).
+- `time_frames`(int, optional): When `aspect_mode="fix"`, the source time range to sample from (frame count, starting at 0). `None` uses the full input video (`self.count`). Overridden by `z_start`/`z_end` if given.
 
 ### Usage
 ```python
 bm.addSlicePlane(frame_nums=1, xypoint=0.5, full_range=True)
+
+# Fix the output to a "1 as-shot : 2 stacked" wide aspect, resampling the whole clip evenly
+bm.addSlicePlane(frame_nums=1, xypoint=0.5, aspect_mode="fix", aspect_ratio=2.0)
+
+# Resample only the first 300 frames into a square output
+bm.addSlicePlane(frame_nums=1, xypoint=0.5, aspect_mode="fix", aspect_ratio=1.0, time_frames=300)
 ```
 
 ![addSlicePlane (3D plot example)](images/doc_addSlicePlane_3dplot.png)

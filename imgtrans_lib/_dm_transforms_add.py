@@ -47,26 +47,68 @@ class TransformsAddMixin:
 
     # 時間方向の断面配列を"frame_nums"で指定されたフレーム数分生成。"xypoint"は0−1の範囲で指定
     #　基本、このモジュールがはじめで終わりの場合のみ
-    def addSlicePlane(self,frame_nums=1,xypoint=0.5,full_range=False,z_start=None,z_end=None):
+    def addSlicePlane(self,frame_nums=1,xypoint=0.5,full_range=False,z_start=None,z_end=None,
+                       aspect_mode="unfix",aspect_ratio=None,time_frames=None):
         """
         スリットスキャン平面を生成する。
+
         xypoint: スリット位置（0.0〜1.0、scan_nums に対する比率）
-        full_range: True で時間軸を全フレーム(0〜count)に拡張
-        z_start, z_end: 時間範囲を直接指定（フレーム番号）。指定時は full_range より優先。
+        full_range: True で時間軸を全フレーム(0〜count)に拡張。aspect_mode="fix" のとき
+                    time_frames を指定しないのと同じ意味になる。
+        z_start, z_end: サンプリング元の時間範囲を直接指定（フレーム番号）。
+                        指定時は full_range/time_frames による範囲決定より優先される。
+                        aspect_mode="fix" と併用した場合、この範囲が
+                        aspect_ratio の枚数へ再サンプルされる (下記)。
+
+        aspect_mode: "unfix" (既定) — 出力画像の縦横比は、積み重ねる時間範囲の
+                     フレーム数にそのまま従う (従来の挙動。1フレーム=1ピクセル)。
+                     "fix" — 出力画像の縦横比を aspect_ratio で固定する。
+                     サンプリング元の時間範囲 (z_start/z_end があればそれ、
+                     無ければ time_frames 分) を、その比率になる枚数へ均等に
+                     リサンプルして積み重ねる (フレーム数と出力ピクセル数が
+                     一致しなくなる。線形補間はせず、各サンプル位置に
+                     最も近いソースフレームへ丸められる)。
+        aspect_ratio: aspect_mode="fix" のときの出力比率 (必須, > 0)。
+                      「積み重ね軸のピクセル数 ÷ 映像そのままの軸のピクセル数」。
+                      スリット方向 (sd) で積み重ね軸と映像そのままの軸が入れ替わるため、
+                      表す向きも入れ替わる:
+                        sd=0 (横スリット): 縦(積み重ね) ÷ 横(映像幅)
+                        sd=1 (縦スリット): 横(積み重ね) ÷ 縦(映像高さ)
+        time_frames: aspect_mode="fix" のとき、サンプリング元に使う時間範囲 (フレーム数、
+                     0 起点)。None なら入力映像の全尺 (self.count)。
+                     z_start/z_end を指定した場合はそちらが優先される。
         """
         print(sys._getframe().f_code.co_name)
         # --- 時間範囲の決定 ---
         if z_start is not None or z_end is not None:
-            # z_start/z_end 明示指定
+            # z_start/z_end 明示指定 (aspect_mode の既定範囲より優先)
             z_s = int(z_start) if z_start is not None else 0
             z_e = int(z_end) if z_end is not None else int(self.count)
+        elif aspect_mode == "fix":
+            z_s = 0
+            z_e = int(time_frames) if time_frames is not None else int(self.count)
         elif full_range:
             z_s, z_e = 0, int(self.count)
         else:
             z_s, z_e = 0, self.scan_nums
-        time_length = z_e - z_s
+
+        if aspect_mode == "fix":
+            if not aspect_ratio or aspect_ratio <= 0:
+                raise ValueError(
+                    "addSlicePlane: aspect_mode='fix' には aspect_ratio (> 0) の指定が必要です")
+            # slit_length は sd に応じて height/width が自動選択される
+            # (積み重ね軸ではない、映像そのままの軸のピクセル数)
+            stack_count = max(1, int(round(aspect_ratio * self.slit_length)))
+            if z_e > z_s:
+                normalFrame = np.linspace(z_s, z_e - 1, stack_count, dtype=np.float64)
+            else:
+                normalFrame = np.full(stack_count, z_s, dtype=np.float64)
+            time_length = stack_count
+        else:
+            time_length = z_e - z_s
+            normalFrame = np.arange(z_s, z_e, dtype=np.float64)
+
         extra_array = np.zeros((frame_nums, time_length, 2), dtype=np.float64)
-        normalFrame = np.arange(z_s, z_e, dtype=np.float64)
         xyFrame = np.full(time_length, int(self.scan_nums * xypoint), dtype=np.float64)
         for i in range(frame_nums):
             extra_array[i,:,0] = xyFrame
