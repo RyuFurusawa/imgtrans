@@ -314,7 +314,12 @@ class DataOpsMixin:
      #一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。baseframe＝ー1で最終フレームを軸とする
     def applyTimeSlide(self,settime:int,baseframe:int=0):    
         print(sys._getframe().f_code.co_name)
-        deff = settime - self.data[baseframe,int(self.scan_nums/2),1]
+        # 基準はスキャン軸の中央。data.shape[1] は scan_nums と一致するとは
+        # 限らない (addSlicePlane の aspect_mode="fix" や拡張系メソッドの後は
+        # 別の長さになる) ため、scan_nums ではなく実際の配列長から取る。
+        # scan_nums 基準だと、GUI のプロキシ計算 (スリットを間引いたプレビュー)
+        # と本番で違うスリットを掴んでしまい、ずれた量だけスライドしていた。
+        deff = settime - self.data[baseframe, self.data.shape[1] // 2, 1]
         self.data[:,:,1]+=deff
         print("zp range-調整後:",np.amin(self.data[:,:,1]),np.amax(self.data[:,:,1]))
         self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]+str(baseframe)+"->"+str(settime))
