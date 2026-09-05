@@ -1166,7 +1166,7 @@ bm.addFlat(60, z_pos=1200, z_autofit=False)  # 入力の1200フレーム目で1�
 
 ### 引数
 - `frame_nums`(int, optional, default: `1`): 追加するフレーム数。
-- `xypoint`(float, optional, default: `0.5`): スリット位置（0.0〜1.0、scan_numsに対する比率）。
+- `xypoint`(float, optional, default: `0.5`): スリット位置（0.0〜1.0、スキャン軸の相対位置）。実際の座標は `xypoint × (scan_nums - 1)` で、`0.0`が一端、`1.0`が他端。
 - `full_range`(bool, optional, default: `False`): `True`で時間軸を入力映像全フレーム(0〜count)に拡張。`aspect_mode="fix"`で`time_frames`を省略するのと同じ意味になる。
 - `z_start`(float, optional): サンプリング元の時間範囲の開始フレームを直接指定。`full_range`/`time_frames`より優先。
 - `z_end`(float, optional): サンプリング元の時間範囲の終了フレーム。

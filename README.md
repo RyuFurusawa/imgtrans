@@ -1206,7 +1206,7 @@ Generates a slit-scan plane (fixed spatial position, sequential time). Only usab
 
 ### Parameters
 - `frame_nums`(int, optional, default: `1`): Number of frames.
-- `xypoint`(float, optional, default: `0.5`): Slit position (0.0-1.0, ratio of scan_nums).
+- `xypoint`(float, optional, default: `0.5`): Slit position (0.0-1.0, relative position on the scan axis). The actual coordinate is `xypoint × (scan_nums - 1)`, so `0.0` is one edge and `1.0` the other.
 - `full_range`(bool, optional, default: `False`): Extend the time axis to the full input video (0..count). Equivalent to omitting `time_frames` when `aspect_mode="fix"`.
 - `z_start`(float, optional) / `z_end`(float, optional): Directly specify the source time range to sample; takes precedence over `full_range`/`time_frames`.
 - `aspect_mode`(str, optional, default: `"unfix"`): `"unfix"` — the output image's aspect ratio simply follows the frame count of the stacked time range (legacy behavior, 1 frame = 1 pixel). `"fix"` — fixes the output aspect ratio to `aspect_ratio`, evenly resampling the source time range into that many samples (no interpolation; each sample snaps to the nearest source frame).

@@ -109,7 +109,12 @@ class TransformsAddMixin:
             normalFrame = np.arange(z_s, z_e, dtype=np.float64)
 
         extra_array = np.zeros((frame_nums, time_length, 2), dtype=np.float64)
-        xyFrame = np.full(time_length, int(self.scan_nums * xypoint), dtype=np.float64)
+        # xypoint は「スキャン軸の相対位置 0..1」。int(scan_nums * xypoint) だと
+        # (1) scan_nums の粗さがそのまま量子化誤差になり、GUI のプレビュー
+        #     (プロキシ 19 本) と本番 (例 2160 本) で読む列がずれる、
+        # (2) xypoint=1.0 で scan_nums (範囲外) になる、という問題があった。
+        # addTrans の start_line*(scan_nums-1) と同じ、解像度非依存の式にする。
+        xyFrame = np.full(time_length, xypoint * (self.scan_nums - 1), dtype=np.float64)
         for i in range(frame_nums):
             extra_array[i,:,0] = xyFrame
             extra_array[i,:,1] = normalFrame
@@ -927,7 +932,7 @@ class TransformsAddMixin:
 
 
     # wr_arrayに新たなTrans（）の軌跡を加えて返す関数    
-    def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True,zscale=1):
+    def addTrans(self,frame_nums,start_line=0,end_line=1,speed_round = True,zd=True,zscale=1.0):
         zscale = zscale * self.xyt_boxel_scale
         if len(self.data) != 0 : 
             extra_array = np.zeros((self.data.shape[0]+frame_nums,self.scan_nums,2),dtype=np.float64)#audioへの適合もあるため、この時点ではビットレートを高くして計測
