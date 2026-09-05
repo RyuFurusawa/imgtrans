@@ -1022,6 +1022,7 @@ print(bm.data.shape)
         - [`applyTimebySpace`](#applytimebyspace): Shift slits in time based on spatial position. Params: `v`(int: max frame shift), `mode`(int: 0=linear, 1=cycle_axis, 2=mean).
         - [`applyTimebyKeyframetoSpace`](#applytimebykeyframetospace): Shift slits in time by keyframe values. Params: `keyframes`(list: a list of shift amounts [frames], spread evenly across the spatial range and spline-interpolated), `mode`(int).
         - [`applyTimeSlide`](#applytimeslide): Set reference time of central slit in first frame. Params: `settime`(int: target time in frames), `baseframe`(int, default 0: -1 for last frame).
+        - [`applyTimeSlideRelative`](#applytimesliderelative): Shift in time relative to the current position. Params: `slideframe`(float: frames to shift), `clamp`(bool, default False: stop before leaving the input range).
         - [`applyInOutGapFix`](#applyinoutgapfix): Seamless loop helper — linearly adjusts all frames to match first/last difference. No params.
         - [`applyInFix`](#applyinfix): Adjusts first frame to target, linear blend over all frames. Params: `target_z_array`(ndarray: target time values per slit).
         - [`applyOutFix`](#applyoutfix): Adjusts last frame to target with ease-in-out blend. Params: `target_z_array`(ndarray), `ease`(bool, default True).
@@ -1832,6 +1833,20 @@ bm.applyTimeSlide(3600, -1)   # align the tail with frame 3600
 ```
 
 ![applyTimeSlide (3D plot example)](images/doc_applyTimeSlide_3dplot.gif)
+
+## `applyTimeSlideRelative`
+Translates the data in time **relative to where it currently is**. `applyTimeSlide` / `zArange` / `zCenterArange` / `zStartArange` all align something to an absolute time coordinate, so use this one when you simply want to nudge the trajectory by N frames.
+
+### Parameters
+- `slideframe`(float): Amount to shift (frames). Positive moves later, negative earlier. Fractions allowed.
+- `clamp`(bool, optional, default: `False`): When `True`, stops short rather than moving outside the input range `[0, count-1]`. It never reverses the requested direction, so it is not meant to pull an already out-of-range trajectory back in (that is what `zPointCheck` / `zStartArange` are for).
+
+### Usage
+```python
+bm.applyTimeSlideRelative(-200)              # 200 frames earlier
+bm.applyTimeSlideRelative(120.5)             # fractions are kept
+bm.applyTimeSlideRelative(-500, clamp=True)  # stop before crossing the head
+```
 
 ## `applyInOutGapFix`
 Distributes the head/tail time difference linearly over all frames to cancel it (seamless-loop helper). No parameters.

@@ -312,6 +312,49 @@ class DataOpsMixin:
 
 
      #一番初めのフレームの中心のスリットの参照時間を、指定した時間にセットする。それに合わせて全体に対してスライドさせて調節する。baseframe＝ー1で最終フレームを軸とする
+    def applyTimeSlideRelative(self, slideframe: float, clamp: bool = False):
+        """時間座標を、いまの位置から相対的に slideframe だけずらす。
+
+        applyTimeSlide / zArange / zCenterArange / zStartArange はいずれも
+        「どこかを絶対時間座標に合わせる」作りなので、単に「あと -200 フレーム
+        ずらしたい」という調整にはこちらを使う。
+
+        slideframe: ずらす量 (フレーム)。正で未来へ、負で過去へ。
+        clamp: True にすると、入力映像の範囲 [0, count-1] を外れるところまでは
+               ずらさない (要求より手前で止める)。要求した向きと逆へ動かすことは
+               しないので、すでに範囲外にある軌道を引き戻す用途には使わない
+               (それは zPointCheck / zStartArange の役目)。
+        """
+        print(sys._getframe().f_code.co_name)
+        if len(self.data) == 0:
+            print("data が空です")
+            return
+        shift = float(slideframe)
+        if clamp:
+            z_min = np.nanmin(self.data[:, :, 1])
+            z_max = np.nanmax(self.data[:, :, 1])
+            if np.isnan(z_min) or np.isnan(z_max):
+                print("Warning: z が全て NaN のため applyTimeSlideRelative をスキップ")
+                return
+            limit = float(self.count) - 1.0
+            # 要求した向きのまま、範囲を割らないところまでに制限する。
+            # 符号は反転させない (逆へ動かすと「相対シフト」ではなくなるため)。
+            if shift < 0:
+                shift = min(0.0, max(shift, -z_min))
+            elif shift > 0:
+                shift = max(0.0, min(shift, limit - z_max))
+            if shift != float(slideframe):
+                print(f"clamp: {slideframe} → {shift:.1f}"
+                      + ("  (これ以上ずらすと範囲外)" if shift == 0 else ""))
+        if shift == 0:
+            print("shift=0 のため変更なし")
+            return
+        self.data[:, :, 1] += shift
+        print("zp range-調整後:", np.nanmin(self.data[:, :, 1]),
+              np.nanmax(self.data[:, :, 1]))
+        self.maneuver_log((sys._getframe().f_code.co_name).split("apply")[1]
+                          + str(round(shift, 2)))
+
     def applyTimeSlide(self,settime:int,baseframe:int=0):    
         print(sys._getframe().f_code.co_name)
         # 基準はスキャン軸の中央。data.shape[1] は scan_nums と一致するとは

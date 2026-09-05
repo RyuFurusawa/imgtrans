@@ -971,6 +971,7 @@ print(bm.data.shape)
         - [`applyTimebySpace`](#applytimebyspace): 空間位置に応じて時間方向にずらす。引数: `v`(int: 最大フレームシフト), `mode`(int: 0=線形, 1=cycle_axis参照, 2=平均)。
         - [`applyTimebyKeyframetoSpace`](#applytimebykeyframetospace): キーフレームで指定した時間方向シフト。引数: `keyframes`(list: シフト量[フレーム]の値リスト。空間全域に等間隔配置されスプライン補間される), `mode`(int)。
         - [`applyTimeSlide`](#applytimeslide): 先頭フレームの中心スリットの参照時間を設定。引数: `settime`(int: 目標時間フレーム数), `baseframe`(int, デフォルト0: -1で最終フレーム)。
+        - [`applyTimeSlideRelative`](#applytimesliderelative): いまの位置から相対的に時間方向へずらす。引数: `slideframe`(float: ずらすフレーム数), `clamp`(bool, デフォルトFalse: 映像範囲を割らない)。
         - [`applyInOutGapFix`](#applyinoutgapfix): シームレスループ用。先頭・最終フレーム差分を線形適用。引数なし。
         - [`applyInFix`](#applyinfix): 先頭フレームをターゲットに合わせ線形ブレンド。引数: `target_z_array`(ndarray: スリットごとの目標時間値)。
         - [`applyOutFix`](#applyoutfix): 最終フレームをターゲットに合わせイーズブレンド。引数: `target_z_array`(ndarray), `ease`(bool, デフォルトTrue)。
@@ -1871,6 +1872,20 @@ bm.applyTimeSlide(3600, -1)   # 末尾を3600フレーム目に合わせる
 ```
 
 ![applyTimeSlide（3dプロット例）](images/doc_applyTimeSlide_3dplot.gif)
+
+## `applyTimeSlideRelative`
+いまの位置から**相対的に**時間方向へ平行移動します。`applyTimeSlide` / `zArange` / `zCenterArange` / `zStartArange` はいずれも「どこかを絶対時間座標に合わせる」作りなので、単に「あと −200 フレームずらしたい」という調整にはこちらを使います。
+
+### 引数
+- `slideframe`(float): ずらす量（フレーム）。正で未来へ、負で過去へ。小数可。
+- `clamp`(bool, optional, default: `False`): `True` で、入力映像の範囲 `[0, count-1]` を外れるところまではずらさない（要求より手前で止める）。要求した向きと逆へは動かさないので、すでに範囲外にある軌道を引き戻す用途には使いません（それは `zPointCheck` / `zStartArange` の役目）。
+
+### 使用例
+```python
+bm.applyTimeSlideRelative(-200)              # 200 フレームぶん過去へ
+bm.applyTimeSlideRelative(120.5)             # 小数もそのまま反映
+bm.applyTimeSlideRelative(-500, clamp=True)  # 映像の頭を割らないところで止める
+```
 
 ## `applyInOutGapFix`
 先頭フレームと最終フレームの時間差分を全フレームに線形に分配して打ち消します（シームレスループの補助）。引数なし。
